@@ -69,7 +69,7 @@ public class SyntheticDataGenerator {
 
     // --- P1's "prior 3-month average" is drawn from the 3 months right before the spike ---
     private boolean isBaselineDiningMonth(int monthIndex) {
-        return monthIndex >= 1 && monthIndex <= 3;
+        return monthIndex >= ANCHOR_MONTH_INDEX - 3 && monthIndex <= ANCHOR_MONTH_INDEX - 1;
     }
 
     // --- P2/P4 just need to land somewhere outside the spike month; month 0 is as good as any ---
@@ -139,7 +139,7 @@ public class SyntheticDataGenerator {
         int targetDay = Math.min(p.crossingDayTarget(), lastDay);
 
         int remainingOrderCount = p.spikeOrderCount() - 1;
-        long firstOrderAmount = balanceAtDay21 + CROSSING_BUFFER;
+        long firstOrderAmount = Math.max(balanceAtDay21 + CROSSING_BUFFER, MIN_ORDER_AMOUNT);
         long spikeTotal = Math.max(p.diningBaseline() + p.spikeExcess(),
             firstOrderAmount + remainingOrderCount * MIN_ORDER_AMOUNT);
         long remainingTotal = spikeTotal - firstOrderAmount;

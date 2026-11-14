@@ -30,9 +30,9 @@ public class GenerateSyntheticDataCliRunner implements CommandLineRunner {
             return;
         }
 
-        long seed = argValue(args, SEED_PREFIX)
-            .map(Long::parseLong)
+        String seedValue = argValue(args, SEED_PREFIX)
             .orElseThrow(() -> new IllegalArgumentException(SEED_PREFIX + " is required with " + GENERATE_FLAG));
+        long seed = parseSeed(seedValue);
 
         String outPath = argValue(args, OUT_PREFIX)
             .orElseThrow(() -> new IllegalArgumentException(OUT_PREFIX + " is required with " + GENERATE_FLAG));
@@ -42,6 +42,14 @@ public class GenerateSyntheticDataCliRunner implements CommandLineRunner {
             Files.writeString(Path.of(outPath), csv);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
+        }
+    }
+
+    private long parseSeed(String seedValue) {
+        try {
+            return Long.parseLong(seedValue);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException(SEED_PREFIX + " must be a valid long, got: " + seedValue, e);
         }
     }
 
