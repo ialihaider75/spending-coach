@@ -2,9 +2,7 @@
 
 > **🚧 Under active development.** Nothing here is stable yet — schema, package layout, and this README are all still moving as each milestone lands.
 
-A tool-calling AI agent that investigates a user's spending history to answer open-ended money questions — a hand-written agent loop over a Postgres transaction store, not a chat wrapper around an LLM. Full design: `local/superpowers/specs/2026-11-12-spending-coach-agent-design.md` (only readable from a local checkout — `local/` is gitignored and won't render on GitHub).
-
-This README reflects what exists right now, after the foundation milestone's schema task. It will grow as CSV import, the synthetic data generator, the tool layer, and the agent loop land.
+A tool-calling AI agent that investigates a user's spending history to answer open-ended money questions — a hand-written agent loop over a Postgres transaction store, not a chat wrapper around an LLM.
 
 ## Architecture
 
