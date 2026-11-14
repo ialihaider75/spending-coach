@@ -3,6 +3,7 @@ package com.intellermatrix.spending_coach.controller;
 import com.intellermatrix.spending_coach.ingestion.dto.ImportSummary;
 import com.intellermatrix.spending_coach.ingestion.service.TransactionImportService;
 import com.intellermatrix.spending_coach.user.service.CurrentUserService;
+import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -13,6 +14,7 @@ import java.io.UncheckedIOException;
 import java.util.UUID;
 
 @RestController
+@RequiredArgsConstructor
 public class TransactionImportController {
 
     public static final String IMPORT_ENDPOINT = "/api/transactions/import";
@@ -20,11 +22,6 @@ public class TransactionImportController {
 
     private final TransactionImportService importService;
     private final CurrentUserService currentUserService;
-
-    public TransactionImportController(TransactionImportService importService, CurrentUserService currentUserService) {
-        this.importService = importService;
-        this.currentUserService = currentUserService;
-    }
 
     @PostMapping(IMPORT_ENDPOINT)
     public ImportSummary importTransactions(@RequestParam(FILE_PARAM) MultipartFile file) {
