@@ -27,6 +27,9 @@ public class TransactionCsvParser {
     static final String REASON_AMOUNT_NOT_NUMERIC = "amount must be numeric";
     static final String REASON_AMOUNT_NOT_POSITIVE = "amount must be positive";
     static final String REASON_INVALID_KIND = "kind must be expense or income";
+    static final String REASON_CATEGORY_TOO_LONG = "category must be 100 characters or fewer";
+
+    private static final int CATEGORY_MAX_LENGTH = 100;
 
     public CsvParseResult parse(UUID userId, InputStream csv) {
         List<Transaction> parsed = new ArrayList<>();
@@ -67,6 +70,11 @@ public class TransactionCsvParser {
         String category = fields[2].trim();
         String note = fields[3].trim();
         String kindField = fields[4].trim();
+
+        if (category.length() > CATEGORY_MAX_LENGTH) {
+            rejected.add(new CsvParseResult.RejectedRow(lineNumber, line, REASON_CATEGORY_TOO_LONG));
+            return;
+        }
 
         LocalDate date;
         try {
