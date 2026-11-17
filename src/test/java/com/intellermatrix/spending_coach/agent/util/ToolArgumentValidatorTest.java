@@ -1,4 +1,4 @@
-package com.intellermatrix.spending_coach.agent.tool;
+package com.intellermatrix.spending_coach.agent.util;
 
 import org.junit.jupiter.api.Test;
 
