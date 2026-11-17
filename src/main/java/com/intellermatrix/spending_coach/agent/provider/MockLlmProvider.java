@@ -7,6 +7,8 @@ import lombok.RequiredArgsConstructor;
 
 import java.util.Map;
 
+// Fixture-miss failures embed the full conversation state in the exception message —
+// fine for test/CI use, but never wire this into a real (non-mock) runtime profile.
 @RequiredArgsConstructor
 public class MockLlmProvider implements LlmProvider {
 
