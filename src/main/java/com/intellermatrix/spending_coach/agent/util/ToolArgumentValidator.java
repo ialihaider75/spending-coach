@@ -1,4 +1,4 @@
-package com.intellermatrix.spending_coach.agent.tool;
+package com.intellermatrix.spending_coach.agent.util;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
