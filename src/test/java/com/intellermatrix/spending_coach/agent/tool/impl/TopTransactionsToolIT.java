@@ -49,4 +49,16 @@ class TopTransactionsToolIT extends IntegrationTestSupport {
         assertThat(rows).extracting(TransactionRow::amount).containsExactly(1500L, 1000L);
         assertThat(result.truncated()).isTrue();
     }
+
+    @Test
+    void aNegativeLimitReturnsAStructuredErrorNotAnException(@Autowired UserRepository userRepository,
+                                                                @Autowired TransactionRepository transactionRepository) {
+        var user = aSavedUser(userRepository);
+        var tool = new TopTransactionsTool(transactionRepository);
+
+        var result = tool.execute(user.getId(), Map.of("limit", -1));
+
+        assertThat(result.error()).isNotNull();
+        assertThat(result.payload()).isNull();
+    }
 }

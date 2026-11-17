@@ -27,7 +27,7 @@ public class SearchTransactionsTool implements AgentTool {
     private static final String SCHEMA = """
         {
         "type":"object",
-        "properties":{"text":{"type":"string"},"category":{"type":"string"},"from":{"type":"string"},"to":{"type":"string"},"limit":{"type":"integer","maximum":50}}
+        "properties":{"text":{"type":"string"},"category":{"type":"string"},"from":{"type":"string"},"to":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":50}}
         }
         """;
     private static final int DEFAULT_LIMIT = 20;
@@ -58,6 +58,9 @@ public class SearchTransactionsTool implements AgentTool {
                 "from and to must be ISO yyyy-MM-dd dates: " + e.getMessage());
         }
         int limit = arguments.get("limit") != null ? ((Number) arguments.get("limit")).intValue() : DEFAULT_LIMIT;
+        if (limit < 1) {
+            return new ToolExecutionResult(name(), null, null, false, "limit must be at least 1");
+        }
         String needle = text != null ? text.toLowerCase(Locale.ROOT) : null;
 
         List<Transaction> matching = transactionRepository.findByUserId(userId).stream()

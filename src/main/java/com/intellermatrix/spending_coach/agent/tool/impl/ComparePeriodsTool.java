@@ -65,6 +65,10 @@ public class ComparePeriodsTool implements AgentTool {
                 "periodAFrom/periodATo/periodBFrom/periodBTo must be ISO yyyy-MM-dd dates: " + e.getMessage());
         }
 
+        if (periodBFrom.isAfter(periodBTo)) {
+            return new ToolExecutionResult(name(), null, null, false, "periodBFrom must be on or before periodBTo");
+        }
+
         Map<String, Long> totalsA = totalsByCategory(userId, periodAFrom, periodATo);
         Map<String, Long> totalsB = totalsByCategory(userId, periodBFrom, periodBTo);
         long monthsInPeriodB = YearMonth.from(periodBFrom).until(YearMonth.from(periodBTo), ChronoUnit.MONTHS) + 1;

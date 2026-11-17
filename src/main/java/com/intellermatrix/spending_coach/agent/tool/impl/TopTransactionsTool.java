@@ -26,7 +26,7 @@ public class TopTransactionsTool implements AgentTool {
     private static final String SCHEMA = """
         {
         "type":"object",
-        "properties":{"category":{"type":"string"},"from":{"type":"string"},"to":{"type":"string"},"minAmount":{"type":"integer"},"limit":{"type":"integer","maximum":50}}
+        "properties":{"category":{"type":"string"},"from":{"type":"string"},"to":{"type":"string"},"minAmount":{"type":"integer"},"limit":{"type":"integer","minimum":1,"maximum":50}}
         }
         """;
     private static final int DEFAULT_LIMIT = 20;
@@ -57,6 +57,9 @@ public class TopTransactionsTool implements AgentTool {
         }
         Long minAmount = arguments.get("minAmount") != null ? ((Number) arguments.get("minAmount")).longValue() : null;
         int limit = arguments.get("limit") != null ? ((Number) arguments.get("limit")).intValue() : DEFAULT_LIMIT;
+        if (limit < 1) {
+            return new ToolExecutionResult(name(), null, null, false, "limit must be at least 1");
+        }
 
         List<Transaction> matching = transactionRepository.findByUserId(userId).stream()
             .filter(t -> category == null || t.getCategory().equals(category))

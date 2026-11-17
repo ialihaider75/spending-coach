@@ -53,4 +53,18 @@ class ComparePeriodsToolIT extends IntegrationTestSupport {
         assertThat(dining.monthlyAverageB()).isEqualTo(400);
         assertThat(dining.change()).isEqualTo(800);
     }
+
+    @Test
+    void aReversedPeriodBReturnsAStructuredErrorNotAnException(@Autowired UserRepository userRepository,
+                                                                  @Autowired TransactionRepository transactionRepository) {
+        var user = aSavedUser(userRepository);
+        var tool = new ComparePeriodsTool(transactionRepository);
+
+        var result = tool.execute(user.getId(), Map.of(
+            "periodAFrom", "2026-10-01", "periodATo", "2026-10-31",
+            "periodBFrom", "2026-09-01", "periodBTo", "2026-08-15"));
+
+        assertThat(result.error()).isNotNull();
+        assertThat(result.payload()).isNull();
+    }
 }

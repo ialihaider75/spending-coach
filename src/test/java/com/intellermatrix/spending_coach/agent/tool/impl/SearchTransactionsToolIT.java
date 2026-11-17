@@ -46,4 +46,16 @@ class SearchTransactionsToolIT extends IntegrationTestSupport {
         assertThat(result.totalCount()).isEqualTo(1);
         assertThat(result.rows()).extracting(TransactionRow::note).containsExactly("Careem ride");
     }
+
+    @Test
+    void aNegativeLimitReturnsAStructuredErrorNotAnException(@Autowired UserRepository userRepository,
+                                                                @Autowired TransactionRepository transactionRepository) {
+        var user = aSavedUser(userRepository);
+        var tool = new SearchTransactionsTool(transactionRepository);
+
+        var result = tool.execute(user.getId(), Map.of("limit", -1));
+
+        assertThat(result.error()).isNotNull();
+        assertThat(result.payload()).isNull();
+    }
 }
