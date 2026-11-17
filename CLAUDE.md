@@ -24,6 +24,7 @@ no rationale, no history of why a decision was made.
 - Package names are action-oriented: `ingestion` not `csv`, `generator` not
   `syntheticdata`, `controller` not `web`.
 - `enums` — standalone top-level package, not nested inside the entity that uses it.
+- A tool's JSON Schema stays in the tool's own implementation class, never in `agent/dto`.
 
 ## Testing
 
@@ -33,8 +34,14 @@ no rationale, no history of why a decision was made.
   query). Always scope assertions to the user (or other entity) the test itself created.
 - Don't add custom Surefire/Failsafe include/exclude config for the `*Test`/`*IT` split.
 
+## Agent tools
+
+- A tool's `SCHEMA` text block: opening `{` and closing `}` each on their own line, one
+  top-level property per line (see `GetOverviewTool`, `SpendingByCategoryTool`).
+
 ## Misc style
 
+- Build a message from multiple values with `String.format`, not `+` concatenation.
 - `String.format` always takes an explicit `Locale` (`Locale.ROOT` unless told otherwise).
 - Magic numbers get a named constant, not a repeated literal.
 - A parser/importer processing a batch of inputs never lets one bad input abort the

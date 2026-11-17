@@ -1,7 +1,7 @@
 package com.intellermatrix.spending_coach.agent.util;
 
-import com.intellermatrix.spending_coach.agent.dto.ChatMessage;
-import com.intellermatrix.spending_coach.agent.dto.ToolCall;
+import com.intellermatrix.spending_coach.agent.dto.provider.ChatMessage;
+import com.intellermatrix.spending_coach.agent.dto.provider.ToolCall;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;

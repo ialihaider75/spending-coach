@@ -1,4 +1,4 @@
-package com.intellermatrix.spending_coach.agent.dto;
+package com.intellermatrix.spending_coach.agent.dto.provider;
 
 import java.util.Map;
 

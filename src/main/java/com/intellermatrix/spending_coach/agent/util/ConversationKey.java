@@ -1,6 +1,6 @@
 package com.intellermatrix.spending_coach.agent.util;
 
-import com.intellermatrix.spending_coach.agent.dto.ChatMessage;
+import com.intellermatrix.spending_coach.agent.dto.provider.ChatMessage;
 import lombok.experimental.UtilityClass;
 import tools.jackson.databind.MapperFeature;
 import tools.jackson.databind.ObjectMapper;
