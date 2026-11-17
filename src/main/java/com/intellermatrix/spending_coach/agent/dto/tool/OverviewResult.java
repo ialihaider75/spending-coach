@@ -1,4 +1,4 @@
-package com.intellermatrix.spending_coach.agent.tool.impl.dto;
+package com.intellermatrix.spending_coach.agent.dto.tool;
 
 import java.time.LocalDate;
 import java.util.List;

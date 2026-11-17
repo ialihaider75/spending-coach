@@ -1,8 +1,8 @@
 package com.intellermatrix.spending_coach.agent.provider;
 
-import com.intellermatrix.spending_coach.agent.dto.ChatMessage;
-import com.intellermatrix.spending_coach.agent.dto.ProviderRequest;
-import com.intellermatrix.spending_coach.agent.dto.ProviderResponse;
+import com.intellermatrix.spending_coach.agent.dto.provider.ChatMessage;
+import com.intellermatrix.spending_coach.agent.dto.provider.ProviderRequest;
+import com.intellermatrix.spending_coach.agent.dto.provider.ProviderResponse;
 import com.intellermatrix.spending_coach.agent.util.ConversationKey;
 import org.junit.jupiter.api.Test;
 

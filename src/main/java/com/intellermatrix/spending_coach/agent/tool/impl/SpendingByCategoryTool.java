@@ -1,9 +1,9 @@
 package com.intellermatrix.spending_coach.agent.tool.impl;
 
-import com.intellermatrix.spending_coach.agent.dto.ToolDefinition;
+import com.intellermatrix.spending_coach.agent.dto.provider.ToolDefinition;
+import com.intellermatrix.spending_coach.agent.dto.tool.CategoryBreakdown;
+import com.intellermatrix.spending_coach.agent.dto.tool.ToolExecutionResult;
 import com.intellermatrix.spending_coach.agent.tool.AgentTool;
-import com.intellermatrix.spending_coach.agent.tool.ToolExecutionResult;
-import com.intellermatrix.spending_coach.agent.tool.impl.dto.CategoryBreakdown;
 import com.intellermatrix.spending_coach.enums.Kind;
 import com.intellermatrix.spending_coach.enums.ToolCatalog;
 import com.intellermatrix.spending_coach.persistence.entity.Transaction;

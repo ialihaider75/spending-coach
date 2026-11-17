@@ -1,7 +1,7 @@
 package com.intellermatrix.spending_coach.agent.tool.impl;
 
 import com.intellermatrix.spending_coach.IntegrationTestSupport;
-import com.intellermatrix.spending_coach.agent.tool.impl.dto.OverviewResult;
+import com.intellermatrix.spending_coach.agent.dto.tool.OverviewResult;
 import com.intellermatrix.spending_coach.enums.Kind;
 import com.intellermatrix.spending_coach.enums.Source;
 import com.intellermatrix.spending_coach.persistence.entity.Transaction;

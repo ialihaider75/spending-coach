@@ -1,6 +1,7 @@
 package com.intellermatrix.spending_coach.agent.tool;
 
-import com.intellermatrix.spending_coach.agent.dto.ToolDefinition;
+import com.intellermatrix.spending_coach.agent.dto.provider.ToolDefinition;
+import com.intellermatrix.spending_coach.agent.dto.tool.ToolExecutionResult;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
