@@ -6,7 +6,7 @@ A tool-calling AI agent that investigates a user's spending history to answer op
 
 ## Architecture
 
-This section documents how the system is actually put together as it gets built — right now that's the database shape (below) plus a CSV import endpoint and a synthetic data generator (both detailed after "Running locally"); it will grow to cover the agent loop and the provider layer as those milestones land.
+This section documents how the system is actually put together as it gets built — right now that's the database shape (below), a CSV import endpoint, a synthetic data generator (both detailed after "Running locally"), and 7 of the agent's 11 planned tools (below); it will grow to cover the agent loop and the provider layer as those milestones land.
 
 ### ERD
 
@@ -69,6 +69,27 @@ erDiagram
         string error
     }
 ```
+
+### Agent tools
+
+The agent reads a user's transactions through a fixed set of tools — each one does
+its own arithmetic/grouping in Java so the model never has to. Not wired into the HTTP
+API or the agent loop yet (both land in later tasks); for now each tool is a plain
+Spring bean exercised directly by its own integration test.
+
+| Tool | Arguments | Returns |
+| --- | --- | --- |
+| `get_overview` | none | date range, transaction count, categories, income entries, monthly totals |
+| `spending_by_category` | `from`, `to` | total and share of expenses per category |
+| `top_transactions` | `category?`, `from?`, `to?`, `minAmount?`, `limit?` | the largest matching transactions |
+| `search_transactions` | `text?`, `category?`, `from?`, `to?`, `limit?` | matching transactions plus the total match count |
+| `compare_periods` | `periodAFrom`, `periodATo`, `periodBFrom`, `periodBTo` | per-category change vs. the other period's monthly average |
+| `find_recurring_charges` | `minOccurrences?` | charges that repeat by category+note, with a derived cadence and any amount change |
+| `detect_anomalies` | `from?`, `to?` | duplicate charges, price changes on recurring charges, and category spending spikes |
+
+The remaining 4 tools (projection/simulation and the two control/write tools) and the
+agent loop that ties them together are still being built — see the design spec for
+the full planned set of 11.
 
 ## Prerequisites
 
