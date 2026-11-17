@@ -50,4 +50,20 @@ class GetOverviewToolIT extends IntegrationTestSupport {
         assertThat(result.toDate()).isEqualTo(LocalDate.of(2026, 10, 5));
         assertThat(result.incomeEntries()).hasSize(1);
     }
+
+    @Test
+    void aUserWithNoTransactionsGetsAnEmptyOverviewNotAnException(@Autowired UserRepository userRepository,
+                                                                      @Autowired TransactionRepository transactionRepository) {
+        var user = aSavedUser(userRepository);
+
+        var tool = new GetOverviewTool(transactionRepository);
+        var result = (OverviewResult) tool.execute(user.getId(), Map.of()).payload();
+
+        assertThat(result.transactionCount()).isZero();
+        assertThat(result.fromDate()).isNull();
+        assertThat(result.toDate()).isNull();
+        assertThat(result.categories()).isEmpty();
+        assertThat(result.incomeEntries()).isEmpty();
+        assertThat(result.monthlyTotals()).isEmpty();
+    }
 }

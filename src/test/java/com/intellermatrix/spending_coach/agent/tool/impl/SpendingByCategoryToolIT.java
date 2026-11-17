@@ -49,4 +49,31 @@ class SpendingByCategoryToolIT extends IntegrationTestSupport {
         assertThat(groceries.total()).isEqualTo(3000);
         assertThat(groceries.sharePercent()).isEqualTo(75.0);
     }
+
+    @Test
+    void returnsAnEmptyBreakdownWhenNoExpensesFallInTheRange(@Autowired UserRepository userRepository,
+                                                                @Autowired TransactionRepository transactionRepository) {
+        var user = aSavedUser(userRepository);
+        save(transactionRepository, user, LocalDate.of(2026, 9, 5), 3000, Kind.EXPENSE, "groceries", "outside range");
+
+        var tool = new SpendingByCategoryTool(transactionRepository);
+        var result = tool.execute(user.getId(), Map.of("from", "2026-10-01", "to", "2026-10-31"));
+
+        @SuppressWarnings("unchecked")
+        var breakdown = (List<CategoryBreakdown>) result.payload();
+        assertThat(breakdown).isEmpty();
+        assertThat(result.error()).isNull();
+    }
+
+    @Test
+    void anUnparseableDateReturnsAStructuredErrorNotAnException(@Autowired UserRepository userRepository,
+                                                                   @Autowired TransactionRepository transactionRepository) {
+        var user = aSavedUser(userRepository);
+        var tool = new SpendingByCategoryTool(transactionRepository);
+
+        var result = tool.execute(user.getId(), Map.of("from", "not-a-date", "to", "2026-10-31"));
+
+        assertThat(result.error()).isNotNull();
+        assertThat(result.payload()).isNull();
+    }
 }

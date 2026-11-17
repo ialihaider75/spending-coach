@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
@@ -46,8 +47,15 @@ public class SpendingByCategoryTool implements AgentTool {
 
     @Override
     public ToolExecutionResult execute(UUID userId, Map<String, Object> arguments) {
-        LocalDate from = LocalDate.parse((String) arguments.get("from"));
-        LocalDate to = LocalDate.parse((String) arguments.get("to"));
+        LocalDate from;
+        LocalDate to;
+        try {
+            from = LocalDate.parse((String) arguments.get("from"));
+            to = LocalDate.parse((String) arguments.get("to"));
+        } catch (DateTimeParseException e) {
+            return new ToolExecutionResult(name(), null, null, false,
+                "from and to must be ISO yyyy-MM-dd dates: " + e.getMessage());
+        }
 
         List<Transaction> expenses = transactionRepository.findByUserIdAndDateBetween(userId, from, to).stream()
             .filter(t -> t.getKind() == Kind.EXPENSE)
