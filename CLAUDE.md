@@ -24,6 +24,7 @@ no rationale, no history of why a decision was made.
 - Package names are action-oriented: `ingestion` not `csv`, `generator` not
   `syntheticdata`, `controller` not `web`.
 - `enums` — standalone top-level package, not nested inside the entity that uses it.
+- A tool's JSON Schema stays in the tool's own implementation class, never in `agent/dto`.
 
 ## Testing
 
