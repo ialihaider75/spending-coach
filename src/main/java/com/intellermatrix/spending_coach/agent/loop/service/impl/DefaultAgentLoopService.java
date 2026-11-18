@@ -10,6 +10,7 @@ import com.intellermatrix.spending_coach.agent.loop.SystemPromptBuilder;
 import com.intellermatrix.spending_coach.agent.loop.config.AgentLoopProperties;
 import com.intellermatrix.spending_coach.agent.loop.service.AgentLoopService;
 import com.intellermatrix.spending_coach.agent.provider.LlmProvider;
+import com.intellermatrix.spending_coach.agent.util.PendingAskUserCall;
 import com.intellermatrix.spending_coach.agent.tool.ToolRegistry;
 import com.intellermatrix.spending_coach.enums.AgentLoopMessage;
 import com.intellermatrix.spending_coach.enums.RunStatus;
@@ -78,12 +79,7 @@ public class DefaultAgentLoopService implements AgentLoopService {
 
         List<ChatMessage> messages = new ArrayList<>(
             MAPPER.readValue(run.getConversationState(), new TypeReference<List<ChatMessage>>() { }));
-        ToolCall askUserCall = messages.stream()
-            .filter(message -> message.toolCalls() != null)
-            .flatMap(message -> message.toolCalls().stream())
-            .filter(toolCall -> isAskUser(toolCall.toolName()))
-            .reduce((first, mostRecent) -> mostRecent)
-            .orElseThrow();
+        ToolCall askUserCall = PendingAskUserCall.findIn(messages).orElseThrow();
         messages.add(new ChatMessage("tool", answer, null, askUserCall.id()));
 
         run.setStatus(RunStatus.RUNNING);
