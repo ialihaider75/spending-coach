@@ -22,6 +22,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -200,5 +201,82 @@ class DefaultAgentLoopServiceIT extends IntegrationTestSupport {
         var savedRun = agentRunRepository.findById(outcome.runId()).orElseThrow();
         assertThat(savedRun.getTotalTokens()).isEqualTo(10 + 5 + 7 + 3);
         assertThat(savedRun.getTotalLatencyMs()).isNotNull();
+    }
+
+    @Test
+    void askUserCallWithNullArgumentsPausesWithoutThrowing() {
+        var user = aSavedUser(userRepository);
+        var askUserCall = new ToolCall("call-1", "ask_user", null);
+        ChatFunction provider = request -> new ProviderResponse(
+            new ChatMessage("assistant", null, List.of(askUserCall), null), 10, 5);
+        var loop = new DefaultAgentLoopService(providerFrom(provider), toolRegistry, agentRunRepository,
+            agentStepRepository, budgetProposalRepository, Clock.systemUTC(), agentLoopProperties);
+
+        var outcome = loop.startRun(user.getId(), "anything");
+
+        assertThat(outcome.status()).isEqualTo(RunStatus.AWAITING_USER);
+        assertThat(outcome.pendingQuestion()).isNull();
+    }
+
+    @Test
+    void askUserAlongsideAnotherToolCallInTheSameBatchStillResumesCorrectly() {
+        var user = aSavedUser(userRepository);
+        var getOverviewCall = new ToolCall("call-1", "get_overview", Map.of());
+        var askUserCall = new ToolCall("call-2", "ask_user", Map.of("question", "Can the gym membership be paused?"));
+        ChatFunction pausesOnFirstCall = request -> request.messages().size() <= 2
+            ? new ProviderResponse(new ChatMessage("assistant", null, List.of(getOverviewCall, askUserCall), null), 10, 5)
+            : new ProviderResponse(new ChatMessage("assistant", "done", null, null), 10, 5);
+        var loop = new DefaultAgentLoopService(providerFrom(pausesOnFirstCall), toolRegistry, agentRunRepository,
+            agentStepRepository, budgetProposalRepository, Clock.systemUTC(), agentLoopProperties);
+
+        var outcome = loop.startRun(user.getId(), "anything");
+        assertThat(outcome.status()).isEqualTo(RunStatus.AWAITING_USER);
+
+        var resumed = loop.resumeRun(outcome.runId(), "yes");
+
+        assertThat(resumed.status()).isEqualTo(RunStatus.COMPLETED);
+        assertThat(resumed.answer()).isEqualTo("done");
+    }
+
+    @Test
+    void unserializableToolCallArgumentsDoNotCrashTheRun() {
+        var user = aSavedUser(userRepository);
+        // deeply nested (not cyclic) so it passes schema validation's Jackson 2
+        // valueToTree untouched, but trips Jackson 3's stricter nesting-depth limit in
+        // dispatch()/canonicalKey() — exercising those catch branches specifically.
+        Map<String, Object> deepest = new HashMap<>();
+        Map<String, Object> current = deepest;
+        for (int i = 0; i < 600; i++) {
+            Map<String, Object> next = new HashMap<>();
+            current.put("n", next);
+            current = next;
+        }
+        var badCall = new ToolCall("call-1", "get_overview", deepest);
+        ChatFunction provider = request -> request.messages().size() <= 2
+            ? new ProviderResponse(new ChatMessage("assistant", null, List.of(badCall), null), 10, 5)
+            : new ProviderResponse(new ChatMessage("assistant", "done", null, null), 7, 3);
+        var loop = new DefaultAgentLoopService(providerFrom(provider), toolRegistry, agentRunRepository,
+            agentStepRepository, budgetProposalRepository, Clock.systemUTC(), agentLoopProperties);
+
+        var outcome = loop.startRun(user.getId(), "anything");
+
+        assertThat(outcome.status()).isEqualTo(RunStatus.COMPLETED);
+        assertThat(outcome.answer()).isEqualTo("done");
+        assertThat(agentStepRepository.findByRunId(outcome.runId())).hasSize(1);
+    }
+
+    @Test
+    void resumingARunThatIsNotPausedFails() {
+        var user = aSavedUser(userRepository);
+        ChatFunction answersImmediately = request -> new ProviderResponse(
+            new ChatMessage("assistant", "done", null, null), 10, 5);
+        var loop = new DefaultAgentLoopService(providerFrom(answersImmediately), toolRegistry, agentRunRepository,
+            agentStepRepository, budgetProposalRepository, Clock.systemUTC(), agentLoopProperties);
+
+        var outcome = loop.startRun(user.getId(), "anything");
+        assertThat(outcome.status()).isEqualTo(RunStatus.COMPLETED);
+
+        assertThatThrownBy(() -> loop.resumeRun(outcome.runId(), "yes"))
+            .isInstanceOf(IllegalStateException.class);
     }
 }

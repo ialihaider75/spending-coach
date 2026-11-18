@@ -20,6 +20,7 @@ import com.intellermatrix.spending_coach.persistence.repository.AgentRunReposito
 import com.intellermatrix.spending_coach.persistence.repository.AgentStepRepository;
 import com.intellermatrix.spending_coach.persistence.repository.BudgetProposalRepository;
 import lombok.RequiredArgsConstructor;
+import tools.jackson.core.JacksonException;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.MapperFeature;
 import tools.jackson.databind.ObjectMapper;
@@ -32,6 +33,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -69,13 +71,18 @@ public class DefaultAgentLoopService implements AgentLoopService {
     @Override
     public AgentRunOutcome resumeRun(UUID runId, String answer) {
         AgentRun run = agentRunRepository.findById(runId).orElseThrow();
+        if (run.getConversationState() == null) {
+            throw new IllegalStateException(
+                String.format(Locale.ROOT, "run %s is not paused awaiting a user answer", runId));
+        }
 
         List<ChatMessage> messages = new ArrayList<>(
             MAPPER.readValue(run.getConversationState(), new TypeReference<List<ChatMessage>>() { }));
-        ChatMessage pausedCall = messages.getLast();
-        ToolCall askUserCall = pausedCall.toolCalls().stream()
+        ToolCall askUserCall = messages.stream()
+            .filter(message -> message.toolCalls() != null)
+            .flatMap(message -> message.toolCalls().stream())
             .filter(toolCall -> isAskUser(toolCall.toolName()))
-            .findFirst()
+            .reduce((first, mostRecent) -> mostRecent)
             .orElseThrow();
         messages.add(new ChatMessage("tool", answer, null, askUserCall.id()));
 
@@ -149,7 +156,11 @@ public class DefaultAgentLoopService implements AgentLoopService {
     }
 
     private String canonicalKey(ToolCall toolCall) {
-        return toolCall.toolName() + CANONICAL_MAPPER.writeValueAsString(toolCall.arguments());
+        try {
+            return toolCall.toolName() + CANONICAL_MAPPER.writeValueAsString(toolCall.arguments());
+        } catch (JacksonException e) {
+            return toolCall.toolName() + "#unserializable:" + System.identityHashCode(toolCall.arguments());
+        }
     }
 
     private ChatMessage dispatch(AgentRun run, int stepNumber, ToolCall toolCall) {
@@ -157,12 +168,28 @@ public class DefaultAgentLoopService implements AgentLoopService {
         ToolExecutionResult result = toolRegistry.execute(run.getUserId(), toolCall.toolName(), toolCall.arguments());
         int latencyMs = (int) (clock.millis() - startMillis);
 
-        String argumentsJson = MAPPER.writeValueAsString(toolCall.arguments());
+        String argumentsJson = serializeOrNull(toolCall.arguments());
         agentStepRepository.save(new AgentStep(run.getId(), stepNumber, toolCall.toolName(), argumentsJson,
             result.resultSummary(), latencyMs, null, result.error()));
 
-        String content = MAPPER.writeValueAsString(result);
+        String content = serializeToolResult(result);
         return new ChatMessage("tool", content, null, toolCall.id());
+    }
+
+    private String serializeOrNull(Object value) {
+        try {
+            return MAPPER.writeValueAsString(value);
+        } catch (JacksonException e) {
+            return null;
+        }
+    }
+
+    private String serializeToolResult(ToolExecutionResult result) {
+        try {
+            return MAPPER.writeValueAsString(result);
+        } catch (JacksonException e) {
+            return result.resultSummary() != null ? result.resultSummary() : "tool result could not be serialized";
+        }
     }
 
     private AgentRunOutcome complete(AgentRun run, String answer, LoopState state) {
@@ -185,7 +212,8 @@ public class DefaultAgentLoopService implements AgentLoopService {
 
     private AgentRunOutcome pauseForAskUser(AgentRun run, List<ChatMessage> messages, ToolCall toolCall,
                                               LoopState state) {
-        String question = toolCall.arguments().get("question") instanceof String value ? value : null;
+        String question = toolCall.arguments() != null
+            && toolCall.arguments().get("question") instanceof String value ? value : null;
 
         finalizeTotals(run, state);
         run.setConversationState(MAPPER.writeValueAsString(messages));
