@@ -5,6 +5,7 @@ import com.intellermatrix.spending_coach.agent.dto.provider.ChatMessage;
 import com.intellermatrix.spending_coach.agent.dto.provider.ProviderRequest;
 import com.intellermatrix.spending_coach.agent.dto.provider.ProviderResponse;
 import com.intellermatrix.spending_coach.agent.dto.provider.ToolCall;
+import com.intellermatrix.spending_coach.agent.loop.config.AgentLoopProperties;
 import com.intellermatrix.spending_coach.agent.provider.LlmProvider;
 import com.intellermatrix.spending_coach.agent.tool.ToolRegistry;
 import com.intellermatrix.spending_coach.enums.RunStatus;
@@ -18,10 +19,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -38,6 +42,8 @@ class DefaultAgentLoopServiceIT extends IntegrationTestSupport {
     private AgentStepRepository agentStepRepository;
     @Autowired
     private BudgetProposalRepository budgetProposalRepository;
+    @Autowired
+    private AgentLoopProperties agentLoopProperties;
 
     private static User aSavedUser(UserRepository users) {
         return users.save(new User(UUID.randomUUID(), "Test User", Instant.now()));
@@ -62,19 +68,78 @@ class DefaultAgentLoopServiceIT extends IntegrationTestSupport {
         ProviderResponse chat(ProviderRequest request);
     }
 
+    private static Clock advancingClock(Duration increment) {
+        return new Clock() {
+            private Instant current = Instant.EPOCH;
+
+            @Override
+            public ZoneId getZone() {
+                return ZoneId.of("UTC");
+            }
+
+            @Override
+            public Clock withZone(ZoneId zone) {
+                return this;
+            }
+
+            @Override
+            public Instant instant() {
+                current = current.plus(increment);
+                return current;
+            }
+        };
+    }
+
     @Test
     void stepCapStopsTheLoopAndReturnsAPartialAnswer() {
         var user = aSavedUser(userRepository);
-        var getOverviewCall = new ToolCall("call-1", "get_overview", Map.of());
-        var alwaysCallsGetOverview = new ChatMessage("assistant", null, List.of(getOverviewCall), null);
-        ChatFunction provider = request -> new ProviderResponse(alwaysCallsGetOverview, 10, 5);
+        var callCounter = new AtomicInteger();
+        // each call uses a different argument so loop detection (steps 6-7) never fires
+        // here — this test is specifically about the step cap, not repeat detection.
+        ChatFunction provider = request -> {
+            var toolCall = new ToolCall("call-" + callCounter.get(), "get_overview",
+                Map.of("call", callCounter.incrementAndGet()));
+            var message = new ChatMessage("assistant", null, List.of(toolCall), null);
+            return new ProviderResponse(message, 10, 5);
+        };
         var loop = new DefaultAgentLoopService(providerFrom(provider), toolRegistry, agentRunRepository,
-            agentStepRepository, budgetProposalRepository, Clock.systemUTC());
+            agentStepRepository, budgetProposalRepository, Clock.systemUTC(), agentLoopProperties);
 
         var outcome = loop.startRun(user.getId(), "anything");
 
         assertThat(outcome.status()).isEqualTo(RunStatus.COMPLETED);
         assertThat(outcome.answer()).containsIgnoringCase("step limit");
         assertThat(agentStepRepository.findByRunId(outcome.runId())).hasSize(8);
+    }
+
+    @Test
+    void thirdIdenticalToolCallAbortsTheRun() {
+        var user = aSavedUser(userRepository);
+        var repeatedCall = new ToolCall("call-1", "get_overview", Map.of());
+        var alwaysRepeatsTheSameCall = new ChatMessage("assistant", null, List.of(repeatedCall), null);
+        ChatFunction provider = request -> new ProviderResponse(alwaysRepeatsTheSameCall, 10, 5);
+        var loop = new DefaultAgentLoopService(providerFrom(provider), toolRegistry, agentRunRepository,
+            agentStepRepository, budgetProposalRepository, Clock.systemUTC(), agentLoopProperties);
+
+        var outcome = loop.startRun(user.getId(), "anything");
+
+        assertThat(outcome.status()).isEqualTo(RunStatus.FAILED);
+        assertThat(agentStepRepository.findByRunId(outcome.runId())).hasSize(3);
+    }
+
+    @Test
+    void wallClockCapStopsTheLoopEvenBeforeTheStepCap() {
+        var user = aSavedUser(userRepository);
+        var getOverviewCall = new ToolCall("call-1", "get_overview", Map.of());
+        var alwaysCallsGetOverview = new ChatMessage("assistant", null, List.of(getOverviewCall), null);
+        ChatFunction provider = request -> new ProviderResponse(alwaysCallsGetOverview, 10, 5);
+        var loop = new DefaultAgentLoopService(providerFrom(provider), toolRegistry, agentRunRepository,
+            agentStepRepository, budgetProposalRepository, advancingClock(Duration.ofSeconds(20)), agentLoopProperties);
+
+        var outcome = loop.startRun(user.getId(), "anything");
+
+        assertThat(outcome.status()).isEqualTo(RunStatus.COMPLETED);
+        assertThat(outcome.answer()).containsIgnoringCase("time limit");
+        assertThat(agentStepRepository.findByRunId(outcome.runId())).hasSizeLessThan(8);
     }
 }
