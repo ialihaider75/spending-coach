@@ -11,6 +11,8 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -47,4 +49,8 @@ public class AgentRun {
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "conversation_state", columnDefinition = "jsonb")
+    private String conversationState;
 }

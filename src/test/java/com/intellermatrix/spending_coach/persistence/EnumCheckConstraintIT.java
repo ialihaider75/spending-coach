@@ -69,7 +69,7 @@ class EnumCheckConstraintIT extends IntegrationTestSupport {
                                                           @Autowired UserRepository users) {
         User user = aSavedUser(users);
         AgentRun run = new AgentRun(UUID.randomUUID(), user.getId(), "How much did I spend on dining?",
-            "mock", status, null, null, Instant.now());
+            "mock", status, null, null, Instant.now(), null);
 
         assertThat(agentRuns.saveAndFlush(run).getStatus()).isEqualTo(status);
     }

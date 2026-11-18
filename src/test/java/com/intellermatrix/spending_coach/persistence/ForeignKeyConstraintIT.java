@@ -80,7 +80,7 @@ class ForeignKeyConstraintIT extends IntegrationTestSupport {
     @Test
     void agentRunWithUnknownUserIdIsRejectedByTheDatabase(@Autowired AgentRunRepository agentRuns) {
         AgentRun orphan = new AgentRun(UUID.randomUUID(), UUID.randomUUID(), "How much did I spend on dining?",
-            "mock", RunStatus.RUNNING, null, null, Instant.now());
+            "mock", RunStatus.RUNNING, null, null, Instant.now(), null);
 
         assertThatThrownBy(() -> agentRuns.saveAndFlush(orphan))
             .isInstanceOf(DataIntegrityViolationException.class);
