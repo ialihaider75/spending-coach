@@ -10,11 +10,13 @@ import com.intellermatrix.spending_coach.proposal.dto.ProposalDecisionResponse;
 import com.intellermatrix.spending_coach.proposal.service.ProposalService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
@@ -28,8 +30,9 @@ public class DefaultProposalService implements ProposalService {
     private final BudgetRepository budgetRepository;
 
     @Override
+    @Transactional
     public ProposalDecisionResponse approve(UUID proposalId) {
-        BudgetProposal proposal = budgetProposalRepository.findById(proposalId).orElseThrow();
+        BudgetProposal proposal = requirePending(proposalId);
 
         List<Map<String, Object>> changes = MAPPER.readValue(proposal.getChangesJson(),
             new TypeReference<List<Map<String, Object>>>() { });
@@ -46,9 +49,19 @@ public class DefaultProposalService implements ProposalService {
     }
 
     @Override
+    @Transactional
     public ProposalDecisionResponse reject(UUID proposalId) {
-        BudgetProposal proposal = budgetProposalRepository.findById(proposalId).orElseThrow();
+        BudgetProposal proposal = requirePending(proposalId);
         return decide(proposal, Status.REJECTED);
+    }
+
+    private BudgetProposal requirePending(UUID proposalId) {
+        BudgetProposal proposal = budgetProposalRepository.findById(proposalId).orElseThrow();
+        if (proposal.getStatus() != Status.PENDING) {
+            throw new IllegalStateException(String.format(Locale.ROOT,
+                "proposal %s has already been decided (%s)", proposalId, proposal.getStatus()));
+        }
+        return proposal;
     }
 
     private ProposalDecisionResponse decide(BudgetProposal proposal, Status status) {

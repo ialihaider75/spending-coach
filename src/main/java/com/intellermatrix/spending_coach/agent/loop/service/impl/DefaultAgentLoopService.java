@@ -82,6 +82,7 @@ public class DefaultAgentLoopService implements AgentLoopService {
         ToolCall askUserCall = PendingAskUserCall.findIn(messages).orElseThrow();
         messages.add(new ChatMessage("tool", answer, null, askUserCall.id()));
 
+        run.setConversationState(null);
         run.setStatus(RunStatus.RUNNING);
         agentRunRepository.save(run);
 

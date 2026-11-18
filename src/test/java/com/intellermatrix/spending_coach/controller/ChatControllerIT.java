@@ -82,4 +82,19 @@ class ChatControllerIT extends IntegrationTestSupport {
             new ChatRequest(UUID.randomUUID(), null, "yes"), ChatResponse.class);
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
+
+    @Test
+    void resumingAnAlreadyCompletedRunReturns409() {
+        var startResponse = rest.postForEntity("/api/chat",
+            new ChatRequest(null, QUESTION, null), ChatResponse.class).getBody();
+        rest.postForEntity("/api/chat",
+            new ChatRequest(startResponse.runId(), null, "yes"), ChatResponse.class);
+
+        // the run above already paused once and has since completed — resuming it
+        // again must be rejected, not silently re-process the stale paused state.
+        var response = rest.postForEntity("/api/chat",
+            new ChatRequest(startResponse.runId(), null, "yes again"), ChatResponse.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+    }
 }

@@ -91,4 +91,31 @@ class ProposalControllerIT extends IntegrationTestSupport {
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
+
+    @Test
+    void approvingAnAlreadyDecidedProposalReturns409AndLeavesTheBudgetUnchanged() {
+        var user = aSavedUser(userRepository);
+        var proposal = aPendingProposal(budgetProposalRepository, user, "dining", 5000);
+        rest.postForEntity("/api/proposals/" + proposal.getId() + "/reject", null, ProposalDecisionResponse.class);
+
+        var response = rest.postForEntity("/api/proposals/" + proposal.getId() + "/approve",
+            null, ProposalDecisionResponse.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(budgetRepository.findById(new BudgetId(user.getId(), "dining"))).isEmpty();
+    }
+
+    @Test
+    void rejectingAnAlreadyApprovedProposalReturns409() {
+        var user = aSavedUser(userRepository);
+        var proposal = aPendingProposal(budgetProposalRepository, user, "dining", 5000);
+        rest.postForEntity("/api/proposals/" + proposal.getId() + "/approve", null, ProposalDecisionResponse.class);
+
+        var response = rest.postForEntity("/api/proposals/" + proposal.getId() + "/reject",
+            null, ProposalDecisionResponse.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(budgetProposalRepository.findById(proposal.getId()).orElseThrow().getStatus())
+            .isEqualTo(Status.APPROVED);
+    }
 }
