@@ -1,4 +1,4 @@
-package com.intellermatrix.spending_coach.agent.loop;
+package com.intellermatrix.spending_coach.agent.dto.loop;
 
 import com.intellermatrix.spending_coach.enums.RunStatus;
 

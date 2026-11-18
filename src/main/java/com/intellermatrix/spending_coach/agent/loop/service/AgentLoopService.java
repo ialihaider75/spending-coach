@@ -1,4 +1,6 @@
-package com.intellermatrix.spending_coach.agent.loop;
+package com.intellermatrix.spending_coach.agent.loop.service;
+
+import com.intellermatrix.spending_coach.agent.dto.loop.AgentRunOutcome;
 
 import java.util.UUID;
 

@@ -1,4 +1,4 @@
-package com.intellermatrix.spending_coach.agent.loop;
+package com.intellermatrix.spending_coach.agent.loop.service.impl;
 
 import com.intellermatrix.spending_coach.IntegrationTestSupport;
 import com.intellermatrix.spending_coach.agent.dto.provider.ChatMessage;

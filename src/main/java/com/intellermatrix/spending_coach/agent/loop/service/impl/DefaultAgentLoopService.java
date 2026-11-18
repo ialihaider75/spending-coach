@@ -1,10 +1,13 @@
-package com.intellermatrix.spending_coach.agent.loop;
+package com.intellermatrix.spending_coach.agent.loop.service.impl;
 
+import com.intellermatrix.spending_coach.agent.dto.loop.AgentRunOutcome;
 import com.intellermatrix.spending_coach.agent.dto.provider.ChatMessage;
 import com.intellermatrix.spending_coach.agent.dto.provider.ProviderRequest;
 import com.intellermatrix.spending_coach.agent.dto.provider.ProviderResponse;
 import com.intellermatrix.spending_coach.agent.dto.provider.ToolCall;
 import com.intellermatrix.spending_coach.agent.dto.tool.ToolExecutionResult;
+import com.intellermatrix.spending_coach.agent.loop.SystemPromptBuilder;
+import com.intellermatrix.spending_coach.agent.loop.service.AgentLoopService;
 import com.intellermatrix.spending_coach.agent.provider.LlmProvider;
 import com.intellermatrix.spending_coach.agent.tool.ToolRegistry;
 import com.intellermatrix.spending_coach.enums.RunStatus;
