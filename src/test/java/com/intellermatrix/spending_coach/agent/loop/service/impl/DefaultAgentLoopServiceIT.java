@@ -166,6 +166,24 @@ class DefaultAgentLoopServiceIT extends IntegrationTestSupport {
     }
 
     @Test
+    void resumingARunThatAlreadyFinishedAfterAnEarlierResumeFails() {
+        var user = aSavedUser(userRepository);
+        var askUserCall = new ToolCall("call-1", "ask_user", Map.of("question", "Can the gym membership be paused?"));
+        ChatFunction pausesOnFirstCall = request -> request.messages().size() <= 2
+            ? new ProviderResponse(new ChatMessage("assistant", null, List.of(askUserCall), null), 10, 5)
+            : new ProviderResponse(new ChatMessage("assistant", "done", null, null), 10, 5);
+        var loop = new DefaultAgentLoopService(providerFrom(pausesOnFirstCall), toolRegistry, agentRunRepository,
+            agentStepRepository, budgetProposalRepository, Clock.systemUTC(), agentLoopProperties);
+        var outcome = loop.startRun(user.getId(), "I need to save 15000.");
+        loop.resumeRun(outcome.runId(), "yes");
+
+        // conversationState must be cleared once consumed — otherwise a second resume
+        // would silently re-process the stale pre-resume snapshot instead of failing.
+        assertThatThrownBy(() -> loop.resumeRun(outcome.runId(), "yes again"))
+            .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
     void resumingAnUnknownRunIdFails() {
         ChatFunction neverCalled = request -> {
             throw new AssertionError("provider should never be called for an unknown run id");
