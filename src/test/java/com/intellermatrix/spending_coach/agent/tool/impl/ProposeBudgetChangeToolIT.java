@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -72,6 +73,50 @@ class ProposeBudgetChangeToolIT extends IntegrationTestSupport {
         var tool = new ProposeBudgetChangeTool(budgetProposalRepository);
 
         var result = tool.execute(user.getId(), Map.of("changes", "not-a-list"));
+
+        assertThat(result.error()).isNotNull();
+        assertThat(result.payload()).isNull();
+    }
+
+    @Test
+    void anEmptyChangesListReturnsAStructuredErrorNotAPointlessProposal(@Autowired UserRepository userRepository,
+                                                                           @Autowired BudgetProposalRepository budgetProposalRepository) {
+        var user = aSavedUser(userRepository);
+        var tool = new ProposeBudgetChangeTool(budgetProposalRepository);
+
+        var result = tool.execute(user.getId(), Map.of("changes", List.of()));
+
+        assertThat(result.error()).isNotNull();
+        assertThat(result.payload()).isNull();
+    }
+
+    @Test
+    void aBlankCategoryReturnsAStructuredErrorNotAWrongResult(@Autowired UserRepository userRepository,
+                                                                 @Autowired BudgetProposalRepository budgetProposalRepository) {
+        var user = aSavedUser(userRepository);
+        var tool = new ProposeBudgetChangeTool(budgetProposalRepository);
+
+        var result = tool.execute(user.getId(), Map.of(
+            "changes", List.of(Map.of("category", "   ", "newMonthlyLimit", 5000))));
+
+        assertThat(result.error()).isNotNull();
+        assertThat(result.payload()).isNull();
+    }
+
+    @Test
+    void unserializableChangesReturnsAStructuredErrorNotAnException(@Autowired UserRepository userRepository,
+                                                                        @Autowired BudgetProposalRepository budgetProposalRepository) {
+        var user = aSavedUser(userRepository);
+        var tool = new ProposeBudgetChangeTool(budgetProposalRepository);
+
+        Map<String, Object> selfReferencing = new HashMap<>();
+        selfReferencing.put("loop", selfReferencing);
+        Map<String, Object> change = new HashMap<>();
+        change.put("category", "dining");
+        change.put("newMonthlyLimit", 5000);
+        change.put("extra", selfReferencing);
+
+        var result = tool.execute(user.getId(), Map.of("changes", List.of(change)));
 
         assertThat(result.error()).isNotNull();
         assertThat(result.payload()).isNull();
