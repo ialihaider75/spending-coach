@@ -3,12 +3,14 @@ package com.intellermatrix.spending_coach.agent.tool;
 import com.intellermatrix.spending_coach.agent.dto.provider.ToolDefinition;
 import com.intellermatrix.spending_coach.agent.dto.tool.ToolExecutionResult;
 import com.intellermatrix.spending_coach.agent.util.ToolArgumentValidator;
+import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+@Component
 public class DefaultToolRegistry implements ToolRegistry {
 
     private final List<AgentTool> tools;

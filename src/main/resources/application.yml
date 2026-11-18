@@ -11,3 +11,10 @@ spring:
     redis:
       host: localhost
       port: 6379
+
+agent:
+  loop:
+    max-steps: 8
+    max-wall-clock-seconds: 30
+    loop-nudge-threshold: 2
+    loop-abort-threshold: 3
