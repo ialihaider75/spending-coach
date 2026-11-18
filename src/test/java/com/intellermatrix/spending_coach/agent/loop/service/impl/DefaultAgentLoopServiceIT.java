@@ -175,4 +175,30 @@ class DefaultAgentLoopServiceIT extends IntegrationTestSupport {
         assertThatThrownBy(() -> loop.resumeRun(UUID.randomUUID(), "yes"))
             .isInstanceOf(NoSuchElementException.class);
     }
+
+    @Test
+    void persistsOneAgentStepPerToolCallWithAllAuditFields() {
+        var user = aSavedUser(userRepository);
+        var getOverviewCall = new ToolCall("call-1", "get_overview", Map.of());
+        ChatFunction callThenAnswer = request -> request.messages().size() <= 2
+            ? new ProviderResponse(new ChatMessage("assistant", null, List.of(getOverviewCall), null), 10, 5)
+            : new ProviderResponse(new ChatMessage("assistant", "done", null, null), 7, 3);
+        var loop = new DefaultAgentLoopService(providerFrom(callThenAnswer), toolRegistry, agentRunRepository,
+            agentStepRepository, budgetProposalRepository, Clock.systemUTC(), agentLoopProperties);
+
+        var outcome = loop.startRun(user.getId(), "anything");
+
+        var steps = agentStepRepository.findByRunId(outcome.runId());
+        assertThat(steps).hasSize(1);
+        var step = steps.get(0);
+        assertThat(step.getStepNumber()).isEqualTo(1);
+        assertThat(step.getTool()).isEqualTo("get_overview");
+        assertThat(step.getResultSummary()).isNotNull();
+        assertThat(step.getLatencyMs()).isNotNull();
+        assertThat(step.getError()).isNull();
+
+        var savedRun = agentRunRepository.findById(outcome.runId()).orElseThrow();
+        assertThat(savedRun.getTotalTokens()).isEqualTo(10 + 5 + 7 + 3);
+        assertThat(savedRun.getTotalLatencyMs()).isNotNull();
+    }
 }

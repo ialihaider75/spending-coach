@@ -88,14 +88,14 @@ public class DefaultAgentLoopService implements AgentLoopService {
     private AgentRunOutcome runLoop(AgentRun run, List<ChatMessage> messages) {
         LoopState state = new LoopState();
         while (true) {
-            Optional<AgentRunOutcome> wallClockOutcome = checkWallClock(run);
+            Optional<AgentRunOutcome> wallClockOutcome = checkWallClock(run, state);
             if (wallClockOutcome.isPresent()) {
                 return wallClockOutcome.get();
             }
 
-            ChatMessage reply = requestNextReply(messages);
+            ChatMessage reply = requestNextReply(messages, state);
             if (!hasToolCalls(reply)) {
-                return complete(run, reply.content());
+                return complete(run, reply.content(), state);
             }
 
             messages.add(reply);
@@ -106,15 +106,16 @@ public class DefaultAgentLoopService implements AgentLoopService {
         }
     }
 
-    private Optional<AgentRunOutcome> checkWallClock(AgentRun run) {
+    private Optional<AgentRunOutcome> checkWallClock(AgentRun run, LoopState state) {
         if (Duration.between(run.getCreatedAt(), clock.instant()).getSeconds() >= properties.maxWallClockSeconds()) {
-            return Optional.of(complete(run, AgentLoopMessage.WALL_CLOCK_LIMIT_REACHED.text()));
+            return Optional.of(complete(run, AgentLoopMessage.WALL_CLOCK_LIMIT_REACHED.text(), state));
         }
         return Optional.empty();
     }
 
-    private ChatMessage requestNextReply(List<ChatMessage> messages) {
+    private ChatMessage requestNextReply(List<ChatMessage> messages, LoopState state) {
         ProviderResponse response = llmProvider.chat(new ProviderRequest(messages, toolRegistry.definitions()));
+        state.tokensUsed += response.promptTokens() + response.completionTokens();
         return response.message();
     }
 
@@ -126,7 +127,7 @@ public class DefaultAgentLoopService implements AgentLoopService {
                                                           List<ToolCall> toolCalls, LoopState state) {
         for (ToolCall toolCall : toolCalls) {
             if (isAskUser(toolCall.toolName())) {
-                return Optional.of(pauseForAskUser(run, messages, toolCall));
+                return Optional.of(pauseForAskUser(run, messages, toolCall, state));
             }
 
             state.stepNumber++;
@@ -134,14 +135,14 @@ public class DefaultAgentLoopService implements AgentLoopService {
 
             int repeatCount = state.repeatCounts.merge(canonicalKey(toolCall), 1, Integer::sum);
             if (repeatCount >= properties.loopAbortThreshold()) {
-                return Optional.of(abortForRepeatedToolCall(run));
+                return Optional.of(abortForRepeatedToolCall(run, state));
             }
             if (repeatCount == properties.loopNudgeThreshold()) {
                 messages.add(new ChatMessage("tool", AgentLoopMessage.LOOP_NUDGE.text(), null, toolCall.id()));
             }
 
             if (state.stepNumber >= properties.maxSteps()) {
-                return Optional.of(complete(run, AgentLoopMessage.STEP_LIMIT_REACHED.text()));
+                return Optional.of(complete(run, AgentLoopMessage.STEP_LIMIT_REACHED.text(), state));
             }
         }
         return Optional.empty();
@@ -164,13 +165,15 @@ public class DefaultAgentLoopService implements AgentLoopService {
         return new ChatMessage("tool", content, null, toolCall.id());
     }
 
-    private AgentRunOutcome complete(AgentRun run, String answer) {
+    private AgentRunOutcome complete(AgentRun run, String answer, LoopState state) {
+        finalizeTotals(run, state);
         run.setStatus(RunStatus.COMPLETED);
         agentRunRepository.save(run);
         return new AgentRunOutcome(run.getId(), RunStatus.COMPLETED, answer, null);
     }
 
-    private AgentRunOutcome abortForRepeatedToolCall(AgentRun run) {
+    private AgentRunOutcome abortForRepeatedToolCall(AgentRun run, LoopState state) {
+        finalizeTotals(run, state);
         run.setStatus(RunStatus.FAILED);
         agentRunRepository.save(run);
         return new AgentRunOutcome(run.getId(), RunStatus.FAILED, AgentLoopMessage.LOOP_ABORTED.text(), null);
@@ -180,9 +183,11 @@ public class DefaultAgentLoopService implements AgentLoopService {
         return ToolCatalog.ASK_USER.id().equals(toolName);
     }
 
-    private AgentRunOutcome pauseForAskUser(AgentRun run, List<ChatMessage> messages, ToolCall toolCall) {
+    private AgentRunOutcome pauseForAskUser(AgentRun run, List<ChatMessage> messages, ToolCall toolCall,
+                                              LoopState state) {
         String question = toolCall.arguments().get("question") instanceof String value ? value : null;
 
+        finalizeTotals(run, state);
         run.setConversationState(MAPPER.writeValueAsString(messages));
         run.setStatus(RunStatus.AWAITING_USER);
         agentRunRepository.save(run);
@@ -190,8 +195,15 @@ public class DefaultAgentLoopService implements AgentLoopService {
         return new AgentRunOutcome(run.getId(), RunStatus.AWAITING_USER, null, question);
     }
 
+    private void finalizeTotals(AgentRun run, LoopState state) {
+        int previousTokens = run.getTotalTokens() != null ? run.getTotalTokens() : 0;
+        run.setTotalTokens(previousTokens + state.tokensUsed);
+        run.setTotalLatencyMs((int) Duration.between(run.getCreatedAt(), clock.instant()).toMillis());
+    }
+
     private static final class LoopState {
         private int stepNumber;
+        private int tokensUsed;
         private final Map<String, Integer> repeatCounts = new HashMap<>();
     }
 }
