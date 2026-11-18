@@ -13,7 +13,9 @@ import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -48,7 +50,6 @@ public class SimulateSavingsTool implements AgentTool {
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public ToolExecutionResult execute(UUID userId, Map<String, Object> arguments) {
         List<Transaction> transactions = transactionRepository.findByUserId(userId);
         LocalDate latestDate = transactions.stream().map(Transaction::getDate).max(Comparator.naturalOrder())
@@ -57,12 +58,23 @@ public class SimulateSavingsTool implements AgentTool {
             return new ToolExecutionResult(name(), null, null, false, "no transactions found for this user");
         }
 
-        List<Map<String, Object>> adjustments = (List<Map<String, Object>>) arguments.get("adjustments");
-        if (adjustments == null) {
-            return new ToolExecutionResult(name(), null, null, false, "adjustments is required");
+        if (!(arguments.get("adjustments") instanceof List<?> rawAdjustments)) {
+            return new ToolExecutionResult(name(), null, null, false,
+                "adjustments must be a list of {category, cutPercent} objects");
         }
-        for (Map<String, Object> adjustment : adjustments) {
-            if (!(adjustment.get("category") instanceof String)
+
+        List<Map<?, ?>> adjustments = new ArrayList<>();
+        for (Object rawAdjustment : rawAdjustments) {
+            if (!(rawAdjustment instanceof Map<?, ?> adjustment)) {
+                return new ToolExecutionResult(name(), null, null, false,
+                    "each adjustment must be an object with a category and a cutPercent");
+            }
+            adjustments.add(adjustment);
+        }
+
+        Map<String, Integer> cutPercentByCategory = new HashMap<>();
+        for (Map<?, ?> adjustment : adjustments) {
+            if (!(adjustment.get("category") instanceof String category)
                 || !(adjustment.get("cutPercent") instanceof Number cutPercent)) {
                 return new ToolExecutionResult(name(), null, null, false,
                     "each adjustment requires a string category and a numeric cutPercent");
@@ -71,6 +83,11 @@ public class SimulateSavingsTool implements AgentTool {
             if (cut < MIN_CUT_PERCENT || cut > MAX_CUT_PERCENT) {
                 return new ToolExecutionResult(name(), null, null, false,
                     "cutPercent must be between 0 and 100");
+            }
+            int totalCutForCategory = cutPercentByCategory.merge(category, cut, Integer::sum);
+            if (totalCutForCategory > MAX_CUT_PERCENT) {
+                return new ToolExecutionResult(name(), null, null, false,
+                    String.format(Locale.ROOT, "combined cutPercent for category '%s' exceeds 100", category));
             }
         }
 
@@ -87,12 +104,10 @@ public class SimulateSavingsTool implements AgentTool {
             .filter(t -> t.getKind() == Kind.EXPENSE)
             .collect(Collectors.groupingBy(Transaction::getCategory, Collectors.summingLong(Transaction::getAmount)));
 
-        long projectedSavings = adjustments.stream()
-            .mapToLong(adjustment -> {
-                String category = (String) adjustment.get("category");
-                int cutPercent = ((Number) adjustment.get("cutPercent")).intValue();
-                long categoryTotal = expenseTotalsByCategory.getOrDefault(category, 0L);
-                return Math.round(categoryTotal * cutPercent / PERCENT_DIVISOR);
+        long projectedSavings = cutPercentByCategory.entrySet().stream()
+            .mapToLong(entry -> {
+                long categoryTotal = expenseTotalsByCategory.getOrDefault(entry.getKey(), 0L);
+                return Math.round(categoryTotal * entry.getValue() / PERCENT_DIVISOR);
             })
             .sum();
 

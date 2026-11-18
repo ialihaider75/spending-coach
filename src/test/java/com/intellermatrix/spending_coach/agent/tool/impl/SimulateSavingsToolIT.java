@@ -75,4 +75,47 @@ class SimulateSavingsToolIT extends IntegrationTestSupport {
         assertThat(result.error()).isNotNull();
         assertThat(result.payload()).isNull();
     }
+
+    @Test
+    void adjustmentsThatIsNotAListReturnsAStructuredErrorNotAnException(@Autowired UserRepository userRepository,
+                                                                          @Autowired TransactionRepository transactionRepository) {
+        var user = aSavedUser(userRepository);
+        save(transactionRepository, user, LocalDate.of(2026, 10, 1), 1000, Kind.INCOME, "salary", "pay");
+
+        var tool = new SimulateSavingsTool(transactionRepository);
+        var result = tool.execute(user.getId(), Map.of("adjustments", "not-a-list"));
+
+        assertThat(result.error()).isNotNull();
+        assertThat(result.payload()).isNull();
+    }
+
+    @Test
+    void anAdjustmentThatIsNotAnObjectReturnsAStructuredErrorNotAnException(@Autowired UserRepository userRepository,
+                                                                              @Autowired TransactionRepository transactionRepository) {
+        var user = aSavedUser(userRepository);
+        save(transactionRepository, user, LocalDate.of(2026, 10, 1), 1000, Kind.INCOME, "salary", "pay");
+
+        var tool = new SimulateSavingsTool(transactionRepository);
+        var result = tool.execute(user.getId(), Map.of("adjustments", List.of("dining")));
+
+        assertThat(result.error()).isNotNull();
+        assertThat(result.payload()).isNull();
+    }
+
+    @Test
+    void duplicateCategoryAdjustmentsExceedingACombinedHundredPercentReturnAStructuredError(
+            @Autowired UserRepository userRepository, @Autowired TransactionRepository transactionRepository) {
+        var user = aSavedUser(userRepository);
+        save(transactionRepository, user, LocalDate.of(2026, 10, 1), 1000, Kind.INCOME, "salary", "pay");
+        save(transactionRepository, user, LocalDate.of(2026, 10, 10), 1200, Kind.EXPENSE, "dining", "spree");
+
+        var tool = new SimulateSavingsTool(transactionRepository);
+        var result = tool.execute(user.getId(), Map.of(
+            "adjustments", List.of(
+                Map.of("category", "dining", "cutPercent", 60),
+                Map.of("category", "dining", "cutPercent", 60))));
+
+        assertThat(result.error()).isNotNull();
+        assertThat(result.payload()).isNull();
+    }
 }
