@@ -24,10 +24,12 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest
 class DefaultAgentLoopServiceIT extends IntegrationTestSupport {
@@ -141,5 +143,36 @@ class DefaultAgentLoopServiceIT extends IntegrationTestSupport {
         assertThat(outcome.status()).isEqualTo(RunStatus.COMPLETED);
         assertThat(outcome.answer()).containsIgnoringCase("time limit");
         assertThat(agentStepRepository.findByRunId(outcome.runId())).hasSizeLessThan(8);
+    }
+
+    @Test
+    void askUserPausesAndResumeContinuesTheSameConversation() {
+        var user = aSavedUser(userRepository);
+        var askUserCall = new ToolCall("call-1", "ask_user", Map.of("question", "Can the gym membership be paused?"));
+        ChatFunction pausesOnFirstCall = request -> request.messages().size() <= 2
+            ? new ProviderResponse(new ChatMessage("assistant", null, List.of(askUserCall), null), 10, 5)
+            : new ProviderResponse(new ChatMessage("assistant", "done", null, null), 10, 5);
+        var loop = new DefaultAgentLoopService(providerFrom(pausesOnFirstCall), toolRegistry, agentRunRepository,
+            agentStepRepository, budgetProposalRepository, Clock.systemUTC(), agentLoopProperties);
+
+        var outcome = loop.startRun(user.getId(), "I need to save 15000.");
+        assertThat(outcome.status()).isEqualTo(RunStatus.AWAITING_USER);
+        assertThat(outcome.pendingQuestion()).isEqualTo("Can the gym membership be paused?");
+
+        var resumed = loop.resumeRun(outcome.runId(), "yes");
+        assertThat(resumed.status()).isEqualTo(RunStatus.COMPLETED);
+        assertThat(resumed.answer()).isEqualTo("done");
+    }
+
+    @Test
+    void resumingAnUnknownRunIdFails() {
+        ChatFunction neverCalled = request -> {
+            throw new AssertionError("provider should never be called for an unknown run id");
+        };
+        var loop = new DefaultAgentLoopService(providerFrom(neverCalled), toolRegistry, agentRunRepository,
+            agentStepRepository, budgetProposalRepository, Clock.systemUTC(), agentLoopProperties);
+
+        assertThatThrownBy(() -> loop.resumeRun(UUID.randomUUID(), "yes"))
+            .isInstanceOf(NoSuchElementException.class);
     }
 }

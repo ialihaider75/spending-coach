@@ -13,12 +13,14 @@ import com.intellermatrix.spending_coach.agent.provider.LlmProvider;
 import com.intellermatrix.spending_coach.agent.tool.ToolRegistry;
 import com.intellermatrix.spending_coach.enums.AgentLoopMessage;
 import com.intellermatrix.spending_coach.enums.RunStatus;
+import com.intellermatrix.spending_coach.enums.ToolCatalog;
 import com.intellermatrix.spending_coach.persistence.entity.AgentRun;
 import com.intellermatrix.spending_coach.persistence.entity.AgentStep;
 import com.intellermatrix.spending_coach.persistence.repository.AgentRunRepository;
 import com.intellermatrix.spending_coach.persistence.repository.AgentStepRepository;
 import com.intellermatrix.spending_coach.persistence.repository.BudgetProposalRepository;
 import lombok.RequiredArgsConstructor;
+import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.MapperFeature;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.SerializationFeature;
@@ -66,7 +68,21 @@ public class DefaultAgentLoopService implements AgentLoopService {
 
     @Override
     public AgentRunOutcome resumeRun(UUID runId, String answer) {
-        throw new UnsupportedOperationException("resumeRun is not yet implemented");
+        AgentRun run = agentRunRepository.findById(runId).orElseThrow();
+
+        List<ChatMessage> messages = new ArrayList<>(
+            MAPPER.readValue(run.getConversationState(), new TypeReference<List<ChatMessage>>() { }));
+        ChatMessage pausedCall = messages.getLast();
+        ToolCall askUserCall = pausedCall.toolCalls().stream()
+            .filter(toolCall -> isAskUser(toolCall.toolName()))
+            .findFirst()
+            .orElseThrow();
+        messages.add(new ChatMessage("tool", answer, null, askUserCall.id()));
+
+        run.setStatus(RunStatus.RUNNING);
+        agentRunRepository.save(run);
+
+        return runLoop(run, messages);
     }
 
     private AgentRunOutcome runLoop(AgentRun run, List<ChatMessage> messages) {
@@ -109,6 +125,10 @@ public class DefaultAgentLoopService implements AgentLoopService {
     private Optional<AgentRunOutcome> dispatchToolCalls(AgentRun run, List<ChatMessage> messages,
                                                           List<ToolCall> toolCalls, LoopState state) {
         for (ToolCall toolCall : toolCalls) {
+            if (isAskUser(toolCall.toolName())) {
+                return Optional.of(pauseForAskUser(run, messages, toolCall));
+            }
+
             state.stepNumber++;
             messages.add(dispatch(run, state.stepNumber, toolCall));
 
@@ -154,6 +174,20 @@ public class DefaultAgentLoopService implements AgentLoopService {
         run.setStatus(RunStatus.FAILED);
         agentRunRepository.save(run);
         return new AgentRunOutcome(run.getId(), RunStatus.FAILED, AgentLoopMessage.LOOP_ABORTED.text(), null);
+    }
+
+    private boolean isAskUser(String toolName) {
+        return ToolCatalog.ASK_USER.id().equals(toolName);
+    }
+
+    private AgentRunOutcome pauseForAskUser(AgentRun run, List<ChatMessage> messages, ToolCall toolCall) {
+        String question = toolCall.arguments().get("question") instanceof String value ? value : null;
+
+        run.setConversationState(MAPPER.writeValueAsString(messages));
+        run.setStatus(RunStatus.AWAITING_USER);
+        agentRunRepository.save(run);
+
+        return new AgentRunOutcome(run.getId(), RunStatus.AWAITING_USER, null, question);
     }
 
     private static final class LoopState {
