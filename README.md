@@ -1,10 +1,21 @@
 # Spending Coach
 
-> **🚧 Under active development.** Nothing here is stable yet — schema, package layout, and this README are all still moving as each milestone lands.
+> **🚧 Under active development.** Schema, package layout, and this README are still evolving.
 
 A tool-calling AI agent that investigates a user's spending history to answer open-ended money questions — a hand-written agent loop over a Postgres transaction store, not a chat wrapper around an LLM.
 
-## Spike
+## Status
+
+- ✅ **Core agent is built and tested:** 11 read/write tools, a hand-written tool-calling
+  loop (no agent framework), guardrails (step cap, wall-clock cap, repeat-call
+  detection, JSON-schema argument validation), a full audit trail per run, and a
+  human-approval step before any write ever takes effect.
+- ✅ **Proven end to end** against a scripted mock model — see [Demo scripts](#demo-scripts)
+  — and backed by unit tests plus Postgres/Redis-backed integration tests (`./mvnw verify`).
+- 🔜 **Not yet wired in:** real LLM providers (Gemini, Groq) with failover/quota
+  handling, a formal evaluation suite, and a Dockerized demo package.
+
+## Proof of concept
 
 Before building any of this for real, a throwaway spike validated the core bet — a
 hand-rolled tool-calling loop, not a framework — against two free-tier providers
@@ -25,7 +36,7 @@ right now that's the database shape (below), a CSV import endpoint, a synthetic 
 generator (both detailed after "Running locally"), all 11 of the agent's tools, the
 hand-written agent loop that ties them together, and the HTTP API surface in front of
 it (below); it will grow to cover real external providers (Gemini/Groq, replacing the
-mock provider below) as that milestone lands.
+mock provider below) next.
 
 ### ERD
 
@@ -120,41 +131,43 @@ each configurable under `agent.loop.*` in `application.yml`:
   run with a partial answer instead of looping forever;
 - loop detection — the same tool called with the same arguments a 2nd time gets a
   steering nudge; a 3rd time aborts the run as failed;
+- every tool call's arguments are validated against a JSON schema before execution —
+  including rejecting malformed or self-referencing input as a clean, structured error
+  rather than letting it crash the run;
 - `ask_user` pauses the run (persisting the exact conversation to resume from) instead
   of answering immediately, and resumes from that exact point once a human answers;
-- every dispatched tool call is written to an audit trail (`agent_steps`) with its
-  latency and result summary.
+- every dispatched tool call, including across a pause/resume, is written durably to
+  an audit trail (`agent_steps`) with its latency and result summary.
 
 The loop currently runs against a mock provider with no live fixtures wired in by
-default (real external providers are a later milestone) — see the design spec for the
-full agent-loop design.
+default — real external providers are next.
 
 ### Demo scripts
 
-**Milestone 3 (tools, loop, guardrails, audit log, mock-provider gate) is complete** —
-including two robustness fixes added after the milestone's own spec-defined gate first
-passed: a self-referencing tool-call argument no longer crashes a run
-(`ToolArgumentValidator` now rejects it as a structured error instead of overflowing
-the stack), and a run's audit trail (`agent_steps`) no longer loses its pre-pause steps
-when resumed and given more tool calls to make. The acceptance test itself is
-`DemoScriptsIT`, which runs the three hero questions from the design doc's "Demo
-scripts" section end to end against the real dev dataset (seed 42, anchor date
-2026-10-31 — the fixed dev dataset from here on) imported through the same CSV pipeline
-a real upload would use:
+Three questions exercise the agent end to end against a fixed, deterministic synthetic
+dataset (six months of transactions for one user, seed `42`, anchor date `2026-10-31`),
+imported through the same CSV pipeline a real upload would use. Each one is proven by
+an automated test (`DemoScriptsIT`) that drives the real tool-calling loop, real
+Postgres queries, and (for the second question) a real pause-for-approval cycle — only
+the model's replies are scripted, standing in for a real LLM until one is wired in.
 
-- *"Why am I running out of money before the 25th this month?"* — the October dining
-  spike (frequent delivery orders) explains the shortfall.
-- *"I need to save 15,000 by month end. Rent and school fees can't change."* — two
-  short simulations, a clarifying question that pauses the run, then a simulation that
-  clears the target and a pending budget proposal.
-- *"Anything weird in my spending?"* — the May duplicate shopping charge and the August
-  subscription price increase are reported; recurring rent/salary are not.
+- **"Why am I running out of money before the 25th this month?"** — the agent pulls
+  the account overview, projects the month-end balance, compares this month's spending
+  to the prior three-month average by category, and drills into the biggest mover. It
+  correctly attributes the shortfall to a cluster of weekend food-delivery charges.
+- **"I need to save 15,000 by month end. Rent and school fees can't change."** — the
+  agent tries two spending-cut combinations, finds both fall short of the target,
+  *asks the user a clarifying question* (pausing the run until answered), then finds a
+  combination that clears the target and files it as a pending proposal — nothing is
+  ever changed without a human approving it afterward through the API.
+- **"Anything weird in my spending?"** — the agent runs anomaly detection, checks the
+  flagged transactions, and correctly reports a real duplicate charge and a real
+  subscription price increase, while correctly not flagging the normal recurring rent
+  and salary transactions as anomalies.
 
-Because production wires an empty-fixture `MockLlmProvider` (real providers are
-Milestone 4's job), hitting `POST /api/chat` against a locally running app fails with
-"No mock fixture for conversation state: ..." — there's no scripted model behind it
-yet. `DemoScriptsIT` exercises the full question-answering loop by scripting each
-reply itself and is the only way to see these three questions answered today.
+A real model isn't wired in yet (see Status above), so `POST /api/chat` against a
+locally running app won't answer these three today — `DemoScriptsIT` is currently the
+way to see the full loop run end to end.
 
 ## Prerequisites
 
@@ -183,7 +196,7 @@ Run the app:
   {"importedCount": 42, "rejectedCount": 0, "rejectionReasons": []}
   ```
 
-  No real auth exists yet (deferred in the design spec) — every import currently resolves to a single stand-in user, created automatically the first time anything is imported.
+  No real auth exists yet — every import currently resolves to a single stand-in user, created automatically the first time anything is imported.
 
   ```bash
   curl -F "file=@transactions.csv" http://localhost:8080/api/transactions/import
@@ -217,7 +230,7 @@ For a demo/dev dataset without a real bank export, generate one deterministicall
 ./mvnw spring-boot:run -Dspring-boot.run.arguments="--generate-data --seed=42 --out=synthetic.csv"
 ```
 
-This writes six months of CSV ending today, covering all seven planted spending patterns from the design spec (a dining spike, a one-off expense, subscription creep, a duplicate charge, a grocery trend, fixed monthly costs, and a day where cumulative balance crosses zero). The same seed always produces byte-identical output. Import it the same way as any other CSV:
+This writes six months of CSV ending today, covering seven planted spending patterns (a dining spike, a one-off expense, subscription creep, a duplicate charge, a grocery trend, fixed monthly costs, and a day where cumulative balance crosses zero). The same seed always produces byte-identical output. Import it the same way as any other CSV:
 
 ```bash
 curl -F "file=@synthetic.csv" http://localhost:8080/api/transactions/import
