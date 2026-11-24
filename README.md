@@ -15,7 +15,7 @@ A tool-calling AI agent that investigates a user's spending history to answer op
 - 🔜 **Not yet wired in:** real LLM providers (Gemini, Groq) with failover/quota
   handling, a formal evaluation suite, and a Dockerized demo package.
 
-## Proof of concept
+## Spike
 
 Before building any of this for real, a throwaway spike validated the core bet — a
 hand-rolled tool-calling loop, not a framework — against two free-tier providers
