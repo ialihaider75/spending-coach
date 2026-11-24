@@ -13,6 +13,7 @@ import com.intellermatrix.spending_coach.agent.tool.ToolRegistry;
 import com.intellermatrix.spending_coach.enums.RunStatus;
 import com.intellermatrix.spending_coach.generator.SyntheticDataGenerator;
 import com.intellermatrix.spending_coach.ingestion.service.TransactionImportService;
+import com.intellermatrix.spending_coach.persistence.entity.AgentStep;
 import com.intellermatrix.spending_coach.persistence.entity.User;
 import com.intellermatrix.spending_coach.persistence.repository.AgentRunRepository;
 import com.intellermatrix.spending_coach.persistence.repository.AgentStepRepository;
@@ -29,6 +30,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayDeque;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
@@ -169,6 +171,17 @@ class DemoScriptsIT extends IntegrationTestSupport {
         assertThat(budgetProposalRepository.findAll().stream()
             .filter(proposal -> proposal.getUserId().equals(devUserId)))
             .hasSize(1);
+
+        // Locks in the Task 12 fix: steps dispatched after resuming must not overwrite
+        // the ones dispatched before the pause (closes the gap an independent review
+        // pointed out - this test previously asserted nothing about agent_steps).
+        List<AgentStep> steps = agentStepRepository.findByRunId(resumed.runId()).stream()
+            .sorted(Comparator.comparingInt(AgentStep::getStepNumber))
+            .toList();
+        assertThat(steps).hasSize(6);
+        assertThat(steps.stream().map(AgentStep::getTool)).containsExactly(
+            "get_overview", "find_recurring_charges", "simulate_savings", "simulate_savings",
+            "simulate_savings", "propose_budget_change");
     }
 
     @Test
