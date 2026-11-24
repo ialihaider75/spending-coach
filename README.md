@@ -131,11 +131,16 @@ full agent-loop design.
 
 ### Demo scripts
 
-**Milestone 3 (tools, loop, guardrails, audit log, mock-provider gate) is complete.**
-Its acceptance test is `DemoScriptsIT`, which runs the three hero questions from the
-design doc's "Demo scripts" section end to end against the real dev dataset (seed 42,
-anchor date 2026-10-31 — the fixed dev dataset from here on) imported through the same
-CSV pipeline a real upload would use:
+**Milestone 3 (tools, loop, guardrails, audit log, mock-provider gate) is complete** —
+including two robustness fixes added after the milestone's own spec-defined gate first
+passed: a self-referencing tool-call argument no longer crashes a run
+(`ToolArgumentValidator` now rejects it as a structured error instead of overflowing
+the stack), and a run's audit trail (`agent_steps`) no longer loses its pre-pause steps
+when resumed and given more tool calls to make. The acceptance test itself is
+`DemoScriptsIT`, which runs the three hero questions from the design doc's "Demo
+scripts" section end to end against the real dev dataset (seed 42, anchor date
+2026-10-31 — the fixed dev dataset from here on) imported through the same CSV pipeline
+a real upload would use:
 
 - *"Why am I running out of money before the 25th this month?"* — the October dining
   spike (frequent delivery orders) explains the shortfall.
