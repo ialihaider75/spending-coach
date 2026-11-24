@@ -17,17 +17,29 @@ A tool-calling AI agent that investigates a user's spending history to answer op
 
 ## Spike
 
-Before building any of this for real, a throwaway spike validated the core bet — a
-hand-rolled tool-calling loop, not a framework — against two free-tier providers
-(Gemini `gemini-flash-lite-latest` and Groq `openai/gpt-oss-20b`) on three gates:
-schema validity, tool choice under ambiguity, and knowing when to stop gathering
-information versus answer. **Verdict: pass, proceed.** Gemini cleared all three gates
-outright (100%, 100%, 90% after a prompt fix); Groq cleared the first two cleanly and
-was inconclusive (not failing) on the third — traced directly to its free tier's
-token-per-minute budget being exhausted mid-run, not to the model reasoning
-incorrectly. Gemini is the reference/target model going forward; Groq is a
-free-tier-constrained fallback whose real-world throughput needs explicit
-pacing/budget design when real providers are wired in.
+Before building any of this for real, a throwaway spike de-risked the core bet: **a
+hand-rolled tool-calling loop, not a framework.** It ran against two free-tier
+providers on three pass/fail gates.
+
+🎯 **What was tested**
+
+- 🤖 **Providers:** Gemini (`gemini-flash-lite-latest`) and Groq (`openai/gpt-oss-20b`)
+- 🚦 **Gates:** schema validity · tool choice under ambiguity · knowing when to stop
+  gathering information versus answer
+
+📊 **Results**
+
+| Gate | 🟦 Gemini | 🟪 Groq |
+| --- | --- | --- |
+| Schema validity | ✅ 100% | ✅ cleared |
+| Tool choice under ambiguity | ✅ 100% | ✅ cleared |
+| Continue-vs-stop reasoning | ✅ 90% (after a prompt fix) | ⚠️ inconclusive — free-tier token-per-minute budget exhausted mid-run, not a reasoning failure |
+
+🏁 **Verdict: pass — proceed.**
+
+- 🟦 **Gemini** is the reference/target model going forward.
+- 🟪 **Groq** is a free-tier-constrained fallback; its real-world throughput needs
+  explicit pacing/budget design once real providers are wired in.
 
 ## Architecture
 
