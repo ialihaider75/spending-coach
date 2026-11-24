@@ -129,6 +129,28 @@ The loop currently runs against a mock provider with no live fixtures wired in b
 default (real external providers are a later milestone) — see the design spec for the
 full agent-loop design.
 
+### Demo scripts
+
+**Milestone 3 (tools, loop, guardrails, audit log, mock-provider gate) is complete.**
+Its acceptance test is `DemoScriptsIT`, which runs the three hero questions from the
+design doc's "Demo scripts" section end to end against the real dev dataset (seed 42,
+anchor date 2026-10-31 — the fixed dev dataset from here on) imported through the same
+CSV pipeline a real upload would use:
+
+- *"Why am I running out of money before the 25th this month?"* — the October dining
+  spike (frequent delivery orders) explains the shortfall.
+- *"I need to save 15,000 by month end. Rent and school fees can't change."* — two
+  short simulations, a clarifying question that pauses the run, then a simulation that
+  clears the target and a pending budget proposal.
+- *"Anything weird in my spending?"* — the May duplicate shopping charge and the August
+  subscription price increase are reported; recurring rent/salary are not.
+
+Because production wires an empty-fixture `MockLlmProvider` (real providers are
+Milestone 4's job), hitting `POST /api/chat` against a locally running app fails with
+"No mock fixture for conversation state: ..." — there's no scripted model behind it
+yet. `DemoScriptsIT` exercises the full question-answering loop by scripting each
+reply itself and is the only way to see these three questions answered today.
+
 ## Prerequisites
 
 - Java 21
