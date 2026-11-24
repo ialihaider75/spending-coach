@@ -66,7 +66,7 @@ public class DefaultAgentLoopService implements AgentLoopService {
         messages.add(new ChatMessage("system", SystemPromptBuilder.build(LocalDate.now(clock)), null, null));
         messages.add(new ChatMessage("user", question, null, null));
 
-        return runLoop(run, messages);
+        return runLoop(run, messages, 0);
     }
 
     @Override
@@ -86,11 +86,19 @@ public class DefaultAgentLoopService implements AgentLoopService {
         run.setStatus(RunStatus.RUNNING);
         agentRunRepository.save(run);
 
-        return runLoop(run, messages);
+        int resumedStepNumber = lastPersistedStepNumber(run.getId());
+        return runLoop(run, messages, resumedStepNumber);
     }
 
-    private AgentRunOutcome runLoop(AgentRun run, List<ChatMessage> messages) {
-        LoopState state = new LoopState();
+    private int lastPersistedStepNumber(UUID runId) {
+        return agentStepRepository.findByRunId(runId).stream()
+            .mapToInt(AgentStep::getStepNumber)
+            .max()
+            .orElse(0);
+    }
+
+    private AgentRunOutcome runLoop(AgentRun run, List<ChatMessage> messages, int initialStepNumber) {
+        LoopState state = new LoopState(initialStepNumber);
         while (true) {
             Optional<AgentRunOutcome> wallClockOutcome = checkWallClock(run, state);
             if (wallClockOutcome.isPresent()) {
@@ -230,5 +238,9 @@ public class DefaultAgentLoopService implements AgentLoopService {
         private int stepNumber;
         private int tokensUsed;
         private final Map<String, Integer> repeatCounts = new HashMap<>();
+
+        private LoopState(int initialStepNumber) {
+            this.stepNumber = initialStepNumber;
+        }
     }
 }

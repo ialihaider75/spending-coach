@@ -9,6 +9,7 @@ import com.intellermatrix.spending_coach.agent.loop.config.AgentLoopProperties;
 import com.intellermatrix.spending_coach.agent.provider.LlmProvider;
 import com.intellermatrix.spending_coach.agent.tool.ToolRegistry;
 import com.intellermatrix.spending_coach.enums.RunStatus;
+import com.intellermatrix.spending_coach.persistence.entity.AgentStep;
 import com.intellermatrix.spending_coach.persistence.entity.User;
 import com.intellermatrix.spending_coach.persistence.repository.AgentRunRepository;
 import com.intellermatrix.spending_coach.persistence.repository.AgentStepRepository;
@@ -22,6 +23,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -163,6 +165,51 @@ class DefaultAgentLoopServiceIT extends IntegrationTestSupport {
         var resumed = loop.resumeRun(outcome.runId(), "yes");
         assertThat(resumed.status()).isEqualTo(RunStatus.COMPLETED);
         assertThat(resumed.answer()).isEqualTo("done");
+    }
+
+    @Test
+    void stepsDispatchedAfterResumeDoNotOverwriteTheOnesDispatchedBeforeThePause() {
+        var user = aSavedUser(userRepository);
+        var getOverviewCall = new ToolCall("call-1", "get_overview", Map.of());
+        var askUserCall = new ToolCall("call-2", "ask_user", Map.of("question", "Can the gym membership be paused?"));
+        var projectMonthEndCall = new ToolCall("call-3", "project_month_end", Map.of());
+        var findRecurringChargesCall = new ToolCall("call-4", "find_recurring_charges", Map.of());
+        ChatFunction provider = request -> {
+            int messageCount = request.messages().size();
+            if (messageCount <= 2) {
+                return new ProviderResponse(new ChatMessage("assistant", null, List.of(getOverviewCall), null), 10, 5);
+            }
+            if (messageCount == 4) {
+                return new ProviderResponse(new ChatMessage("assistant", null, List.of(askUserCall), null), 10, 5);
+            }
+            if (messageCount == 6) {
+                return new ProviderResponse(new ChatMessage("assistant", null, List.of(projectMonthEndCall), null), 10, 5);
+            }
+            if (messageCount == 8) {
+                return new ProviderResponse(
+                    new ChatMessage("assistant", null, List.of(findRecurringChargesCall), null), 10, 5);
+            }
+            return new ProviderResponse(new ChatMessage("assistant", "done", null, null), 10, 5);
+        };
+        var loop = new DefaultAgentLoopService(providerFrom(provider), toolRegistry, agentRunRepository,
+            agentStepRepository, budgetProposalRepository, Clock.systemUTC(), agentLoopProperties);
+
+        var outcome = loop.startRun(user.getId(), "anything");
+        assertThat(outcome.status()).isEqualTo(RunStatus.AWAITING_USER);
+
+        var resumed = loop.resumeRun(outcome.runId(), "yes");
+        assertThat(resumed.status()).isEqualTo(RunStatus.COMPLETED);
+
+        var steps = agentStepRepository.findByRunId(outcome.runId()).stream()
+            .sorted(Comparator.comparingInt(AgentStep::getStepNumber))
+            .toList();
+        assertThat(steps).hasSize(3);
+        assertThat(steps.get(0).getStepNumber()).isEqualTo(1);
+        assertThat(steps.get(0).getTool()).isEqualTo("get_overview");
+        assertThat(steps.get(1).getStepNumber()).isEqualTo(2);
+        assertThat(steps.get(1).getTool()).isEqualTo("project_month_end");
+        assertThat(steps.get(2).getStepNumber()).isEqualTo(3);
+        assertThat(steps.get(2).getTool()).isEqualTo("find_recurring_charges");
     }
 
     @Test
