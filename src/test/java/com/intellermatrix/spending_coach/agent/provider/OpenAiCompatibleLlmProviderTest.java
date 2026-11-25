@@ -203,6 +203,7 @@ class OpenAiCompatibleLlmProviderTest {
             .minimumNumberOfCalls(3)
             .failureRateThreshold(100)
             .waitDurationInOpenState(Duration.ofSeconds(60))
+            .recordExceptions(ProviderUnavailableException.class)
             .build();
         var provider = providerFor(wireMock.baseUrl(), RestClient.builder(), CircuitBreakerRegistry.of(breakerConfig));
 
@@ -213,5 +214,34 @@ class OpenAiCompatibleLlmProviderTest {
         assertThatThrownBy(() -> provider.chat(REQUEST)).isInstanceOf(ProviderUnavailableException.class);
 
         wireMock.verify(3, postRequestedFor(urlEqualTo("/chat/completions")));
+    }
+
+    @Test
+    void repeatedNonTooManyRequestsClientErrorsNeverTripTheBreaker() {
+        // A genuine bug on our side (a non-429 4xx) rethrows unchanged per Task 4's own
+        // design - it must never count toward "provider unavailable" the way a real
+        // 429/5xx/timeout does, or 3 unrelated bugs would wrongly open the breaker and
+        // start rejecting calls that would otherwise succeed.
+        wireMock.stubFor(post("/chat/completions").willReturn(aResponse().withStatus(400)));
+        CircuitBreakerConfig breakerConfig = CircuitBreakerConfig.custom()
+            .slidingWindowType(CircuitBreakerConfig.SlidingWindowType.COUNT_BASED)
+            .slidingWindowSize(3)
+            .minimumNumberOfCalls(3)
+            .failureRateThreshold(100)
+            .waitDurationInOpenState(Duration.ofSeconds(60))
+            .recordExceptions(ProviderUnavailableException.class)
+            .build();
+        var provider = providerFor(wireMock.baseUrl(), RestClient.builder(), CircuitBreakerRegistry.of(breakerConfig));
+
+        for (int call = 1; call <= 4; call++) {
+            assertThatThrownBy(() -> provider.chat(REQUEST))
+                .isInstanceOf(RestClientResponseException.class)
+                .isNotInstanceOf(ProviderUnavailableException.class);
+        }
+
+        // All 4 calls must have actually reached the network - if the breaker had
+        // wrongly opened after the 3rd, the 4th would throw CallNotPermittedException
+        // instead and never reach WireMock.
+        wireMock.verify(4, postRequestedFor(urlEqualTo("/chat/completions")));
     }
 }
