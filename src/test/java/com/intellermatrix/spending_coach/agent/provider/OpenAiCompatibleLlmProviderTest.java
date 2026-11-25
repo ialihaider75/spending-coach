@@ -71,7 +71,42 @@ class OpenAiCompatibleLlmProviderTest {
         var response = provider.chat(new ProviderRequest(List.of(SYSTEM_MESSAGE, USER_MESSAGE), List.of()));
 
         var toolCall = response.message().toolCalls().get(0);
-        assertThat(toolCall.toolName()).isEqualTo("simulate_savings");
+        // The real tool name is NOT reused as-is: DefaultToolRegistry looks tools up by
+        // an exact name() match, so a mangled name routes this through its existing
+        // "Unknown tool" error path instead of (wrongly) dispatching to the real tool
+        // with garbage/missing arguments.
+        assertThat(toolCall.toolName()).startsWith("simulate_savings").isNotEqualTo("simulate_savings");
         assertThat(toolCall.arguments()).containsKey("parseError");
+    }
+
+    @Test
+    void malformedAskUserArgumentsDoNotMatchTheRealAskUserToolName() {
+        // DefaultAgentLoopService special-cases ask_user by an exact toolName match,
+        // BEFORE ToolArgumentValidator ever runs - bypassing the normal
+        // missing-required-field error path entirely. A mangled name on parse failure
+        // is what keeps a malformed ask_user call from silently pausing the run with a
+        // null question instead of reporting an error (see commit history for the
+        // review finding this closes).
+        wireMock.stubFor(post("/chat/completions").willReturn(okJson("""
+            {"choices":[{"message":{"role":"assistant","tool_calls":[
+              {"id":"call-3","function":{"name":"ask_user","arguments":"{\\"question\\": incomplete"}}]}}],
+             "usage":{"prompt_tokens":90,"completion_tokens":5}}""")));
+        var provider = new OpenAiCompatibleLlmProvider(configFor(wireMock.baseUrl()), RestClient.builder());
+
+        var response = provider.chat(new ProviderRequest(List.of(SYSTEM_MESSAGE, USER_MESSAGE), List.of()));
+
+        assertThat(response.message().toolCalls().get(0).toolName()).isNotEqualTo("ask_user");
+    }
+
+    @Test
+    void emptyChoicesArrayDoesNotThrow() {
+        wireMock.stubFor(post("/chat/completions").willReturn(okJson("""
+            {"choices":[], "usage":{"prompt_tokens":10,"completion_tokens":0}}""")));
+        var provider = new OpenAiCompatibleLlmProvider(configFor(wireMock.baseUrl()), RestClient.builder());
+
+        var response = provider.chat(new ProviderRequest(List.of(SYSTEM_MESSAGE, USER_MESSAGE), List.of()));
+
+        assertThat(response.message().content()).isNull();
+        assertThat(response.message().toolCalls()).isNull();
     }
 }

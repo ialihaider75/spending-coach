@@ -29,6 +29,7 @@ public class OpenAiCompatibleLlmProvider implements LlmProvider {
 
     private static final String CHAT_COMPLETIONS_PATH = "/chat/completions";
     private static final String MALFORMED_ARGUMENTS_ERROR = "malformed tool-call arguments JSON";
+    private static final String MALFORMED_ARGUMENTS_TOOL_SUFFIX = ":malformed-arguments";
     private static final ObjectMapper MAPPER = JsonMapper.builder().build();
 
     private final ProviderConfig config;
@@ -99,9 +100,10 @@ public class OpenAiCompatibleLlmProvider implements LlmProvider {
     }
 
     private ProviderResponse toProviderResponse(JsonNode root) {
-        JsonNode message = root.get("choices").get(0).get("message");
-        String content = message.hasNonNull("content") ? message.get("content").asString() : null;
-        List<ToolCall> toolCalls = toToolCalls(message.get("tool_calls"));
+        JsonNode choices = root.get("choices");
+        JsonNode message = choices != null && !choices.isEmpty() ? choices.get(0).get("message") : null;
+        String content = message != null && message.hasNonNull("content") ? message.get("content").asString() : null;
+        List<ToolCall> toolCalls = message != null ? toToolCalls(message.get("tool_calls")) : null;
         ChatMessage chatMessage = new ChatMessage("assistant", content, toolCalls, null);
 
         JsonNode usage = root.get("usage");
@@ -121,23 +123,31 @@ public class OpenAiCompatibleLlmProvider implements LlmProvider {
             String id = toolCallNode.get("id").asString();
             JsonNode function = toolCallNode.get("function");
             String toolName = function.get("name").asString();
-            Map<String, Object> arguments = parseArguments(function.get("arguments").asString());
-            toolCalls.add(new ToolCall(id, toolName, arguments));
+            String rawArguments = function.get("arguments").asString();
+            toolCalls.add(toToolCall(id, toolName, rawArguments));
         }
         return toolCalls;
     }
 
-    private Map<String, Object> parseArguments(String argumentsJson) {
+    private ToolCall toToolCall(String id, String toolName, String rawArguments) {
         try {
-            return MAPPER.readValue(argumentsJson, new TypeReference<Map<String, Object>>() { });
+            Map<String, Object> arguments = MAPPER.readValue(rawArguments, new TypeReference<Map<String, Object>>() { });
+            return new ToolCall(id, toolName, arguments);
         } catch (JacksonException e) {
-            // The model emitted unparseable/truncated JSON for a tool call's arguments -
-            // this becomes a normal failed-schema-validation or unknown-shape result once
-            // dispatched, not an unhandled parse exception crashing the run.
-            Map<String, Object> error = new LinkedHashMap<>();
-            error.put("parseError", MALFORMED_ARGUMENTS_ERROR);
-            error.put("rawArguments", argumentsJson);
-            return error;
+            // The model emitted unparseable/truncated JSON for a tool call's arguments.
+            // The real tool name is deliberately NOT reused as-is: DefaultToolRegistry
+            // looks tools up by an exact name() match, so mangling it here routes this
+            // through that registry's existing "Unknown tool" error path uniformly for
+            // every tool - including ask_user, which DefaultAgentLoopService special-cases
+            // by an exact name match BEFORE ToolArgumentValidator ever runs, and would
+            // otherwise silently pause the run with a null question instead of reporting
+            // an error. Zero changes to DefaultAgentLoopService/DefaultToolRegistry/
+            // ToolArgumentValidator - this plan's Global Constraints forbid touching the
+            // first of those beyond Task 7's one later catch.
+            Map<String, Object> arguments = new LinkedHashMap<>();
+            arguments.put("parseError", MALFORMED_ARGUMENTS_ERROR);
+            arguments.put("rawArguments", rawArguments);
+            return new ToolCall(id, toolName + MALFORMED_ARGUMENTS_TOOL_SUFFIX, arguments);
         }
     }
 
