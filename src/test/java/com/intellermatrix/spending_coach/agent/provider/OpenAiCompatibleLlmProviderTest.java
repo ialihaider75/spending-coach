@@ -6,14 +6,19 @@ import com.intellermatrix.spending_coach.agent.dto.provider.ProviderRequest;
 import com.intellermatrix.spending_coach.agent.provider.config.ProviderConfig;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 
+import java.time.Duration;
 import java.util.List;
 
+import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class OpenAiCompatibleLlmProviderTest {
 
@@ -108,5 +113,45 @@ class OpenAiCompatibleLlmProviderTest {
 
         assertThat(response.message().content()).isNull();
         assertThat(response.message().toolCalls()).isNull();
+    }
+
+    @Test
+    void aTooManyRequestsResponseThrowsProviderUnavailable() {
+        wireMock.stubFor(post("/chat/completions").willReturn(aResponse().withStatus(429)));
+        var provider = new OpenAiCompatibleLlmProvider(configFor(wireMock.baseUrl()), RestClient.builder());
+
+        assertThatThrownBy(() -> provider.chat(new ProviderRequest(List.of(SYSTEM_MESSAGE, USER_MESSAGE), List.of())))
+            .isInstanceOf(ProviderUnavailableException.class);
+    }
+
+    @Test
+    void aServerErrorResponseThrowsProviderUnavailable() {
+        wireMock.stubFor(post("/chat/completions").willReturn(aResponse().withStatus(503)));
+        var provider = new OpenAiCompatibleLlmProvider(configFor(wireMock.baseUrl()), RestClient.builder());
+
+        assertThatThrownBy(() -> provider.chat(new ProviderRequest(List.of(SYSTEM_MESSAGE, USER_MESSAGE), List.of())))
+            .isInstanceOf(ProviderUnavailableException.class);
+    }
+
+    @Test
+    void aResponseDelayedPastTheConfiguredTimeoutThrowsProviderUnavailable() {
+        wireMock.stubFor(post("/chat/completions").willReturn(okJson("{}").withFixedDelay(500)));
+        var shortTimeoutFactory = new SimpleClientHttpRequestFactory();
+        shortTimeoutFactory.setReadTimeout(Duration.ofMillis(150));
+        var provider = new OpenAiCompatibleLlmProvider(configFor(wireMock.baseUrl()),
+            RestClient.builder().requestFactory(shortTimeoutFactory));
+
+        assertThatThrownBy(() -> provider.chat(new ProviderRequest(List.of(SYSTEM_MESSAGE, USER_MESSAGE), List.of())))
+            .isInstanceOf(ProviderUnavailableException.class);
+    }
+
+    @Test
+    void aNonTooManyRequestsClientErrorRethrowsUnchanged() {
+        wireMock.stubFor(post("/chat/completions").willReturn(aResponse().withStatus(400)));
+        var provider = new OpenAiCompatibleLlmProvider(configFor(wireMock.baseUrl()), RestClient.builder());
+
+        assertThatThrownBy(() -> provider.chat(new ProviderRequest(List.of(SYSTEM_MESSAGE, USER_MESSAGE), List.of())))
+            .isInstanceOf(RestClientResponseException.class)
+            .isNotInstanceOf(ProviderUnavailableException.class);
     }
 }

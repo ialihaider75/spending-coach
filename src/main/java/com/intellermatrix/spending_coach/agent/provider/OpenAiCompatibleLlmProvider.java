@@ -7,8 +7,11 @@ import com.intellermatrix.spending_coach.agent.dto.provider.ToolCall;
 import com.intellermatrix.spending_coach.agent.dto.provider.ToolDefinition;
 import com.intellermatrix.spending_coach.agent.provider.config.ProviderConfig;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.JsonNode;
@@ -18,6 +21,7 @@ import tools.jackson.databind.json.JsonMapper;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 // Wire-format request/response shapes below are this class's own serialization
@@ -51,13 +55,30 @@ public class OpenAiCompatibleLlmProvider implements LlmProvider {
             requestBody.put("tools", request.tools().stream().map(this::toWireTool).toList());
         }
 
-        String responseBody = restClient.post()
-            .uri(CHAT_COMPLETIONS_PATH)
-            .contentType(MediaType.APPLICATION_JSON)
-            .header("Authorization", "Bearer " + config.apiKey())
-            .body(writeJson(requestBody))
-            .retrieve()
-            .body(String.class);
+        String responseBody;
+        try {
+            responseBody = restClient.post()
+                .uri(CHAT_COMPLETIONS_PATH)
+                .contentType(MediaType.APPLICATION_JSON)
+                .header("Authorization", "Bearer " + config.apiKey())
+                .body(writeJson(requestBody))
+                .retrieve()
+                .body(String.class);
+        } catch (RestClientResponseException e) {
+            int statusCode = e.getStatusCode().value();
+            if (e.getStatusCode().equals(HttpStatus.TOO_MANY_REQUESTS) || e.getStatusCode().is5xxServerError()) {
+                throw new ProviderUnavailableException(
+                    String.format(Locale.ROOT, "%s returned HTTP %d", config.name(), statusCode), statusCode, e);
+            }
+            throw e;
+        } catch (RestClientException e) {
+            // Covers connection failures and a read-timeout - whether it surfaces as
+            // ResourceAccessException (request execution) or a plain RestClientException
+            // wrapping an IOException (response body extraction) - per this task's own
+            // Step 3: catch RestClientResponseException/RestClientException broadly here.
+            throw new ProviderUnavailableException(
+                String.format(Locale.ROOT, "%s request failed: %s", config.name(), e.getMessage()), null, e);
+        }
 
         return toProviderResponse(readJson(responseBody));
     }
