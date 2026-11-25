@@ -6,6 +6,9 @@ import com.intellermatrix.spending_coach.agent.dto.provider.ProviderResponse;
 import com.intellermatrix.spending_coach.agent.dto.provider.ToolCall;
 import com.intellermatrix.spending_coach.agent.dto.provider.ToolDefinition;
 import com.intellermatrix.spending_coach.agent.provider.config.ProviderConfig;
+import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -38,6 +41,7 @@ public class OpenAiCompatibleLlmProvider implements LlmProvider {
 
     private final ProviderConfig config;
     private final RestClient.Builder builder;
+    private final CircuitBreakerRegistry circuitBreakerRegistry;
 
     @Override
     public String name() {
@@ -55,9 +59,24 @@ public class OpenAiCompatibleLlmProvider implements LlmProvider {
             requestBody.put("tools", request.tools().stream().map(this::toWireTool).toList());
         }
 
+        CircuitBreaker circuitBreaker = circuitBreakerRegistry.circuitBreaker(config.name());
         String responseBody;
         try {
-            responseBody = restClient.post()
+            responseBody = circuitBreaker.executeSupplier(() -> callProvider(restClient, requestBody));
+        } catch (CallNotPermittedException e) {
+            // A breaker-open rejection surfaces as the same failure type as a live
+            // 429/5xx/timeout, so callers (Task 7/8) see one consistent signal
+            // regardless of cause.
+            throw new ProviderUnavailableException(
+                String.format(Locale.ROOT, "%s circuit breaker is open", config.name()), null, e);
+        }
+
+        return toProviderResponse(readJson(responseBody));
+    }
+
+    private String callProvider(RestClient restClient, Map<String, Object> requestBody) {
+        try {
+            return restClient.post()
                 .uri(CHAT_COMPLETIONS_PATH)
                 .contentType(MediaType.APPLICATION_JSON)
                 .header("Authorization", "Bearer " + config.apiKey())
@@ -79,8 +98,6 @@ public class OpenAiCompatibleLlmProvider implements LlmProvider {
             throw new ProviderUnavailableException(
                 String.format(Locale.ROOT, "%s request failed: %s", config.name(), e.getMessage()), null, e);
         }
-
-        return toProviderResponse(readJson(responseBody));
     }
 
     private Map<String, Object> toWireMessage(ChatMessage message) {
